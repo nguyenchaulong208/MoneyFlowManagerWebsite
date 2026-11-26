@@ -1,35 +1,55 @@
 # Dòng Tiền
 
-Ứng dụng quản lý tài chính cá nhân bằng HTML, CSS và JavaScript thuần. Theo dõi thu chi, tài sản, khoản nợ và báo cáo tháng; dữ liệu có thể lưu trên thiết bị hoặc đồng bộ riêng tư bằng Supabase Auth.
+Ứng dụng quản lý thu chi, tài sản và khoản nợ bằng HTML/CSS/JavaScript thuần. Đăng nhập bằng email/mật khẩu hoặc Google; mọi dữ liệu tài chính đã đăng nhập được lưu trong Supabase SQL. Mỗi tài khoản có không gian cá nhân riêng và có thể tham gia không gian gia đình. Chỉ dữ liệu được tạo trong một không gian gia đình mới hiển thị với các thành viên của không gian đó.
 
-## Chạy website
+## Chạy và kiểm tra
 
 Yêu cầu Node.js 18 trở lên:
 
 ```powershell
 npm start
+npm run check
+npm test
 ```
 
-Mở `http://localhost:3000`. Cũng có thể chạy `npm run check` để kiểm tra cú pháp JavaScript.
+Mở `http://localhost:3000`. Cần cấu hình Supabase mới có thể đăng nhập; ứng dụng không hiển thị sổ tài chính khi chưa xác thực. JSON sao lưu/khôi phục vẫn có trong **Cài đặt**. Dữ liệu cũ từng lưu trên trình duyệt có thể được chuyển lên không gian cá nhân sau khi đăng nhập.
 
-## Dùng Supabase
+## Tạo Supabase
 
-Ứng dụng hoạt động ngay ở chế độ chỉ lưu trong trình duyệt. Để bật tài khoản và đồng bộ:
+1. Tạo dự án Supabase và chạy toàn bộ [`supabase/schema.sql`](supabase/schema.sql) trong **SQL Editor**. Schema tạo không gian cá nhân cho tài khoản hiện có và tự động chuyển các giao dịch/tài sản/khoản nợ cũ vào không gian riêng tương ứng. Chạy lại schema an toàn; hãy sao lưu cơ sở dữ liệu trước khi triển khai thay đổi lớn.
+2. Trong **Project Settings → API**, dùng Project URL và **anon/public (publishable) key**. Không đưa service-role/secret key vào website, Vercel environment variables hoặc bất kỳ tệp nào được phân phối cho trình duyệt.
+3. Với chạy local, sao chép `supabase-config.example.js` thành `supabase-config.js`, điền URL và public key, sau đó chạy `npm start`. Tệp local này được Git bỏ qua. Tài khoản mới có thể cần xác nhận email theo thiết lập Auth của dự án.
+4. Trong **Authentication → URL Configuration**, đặt **Site URL** là URL production. Thêm chính xác các URL callback được dùng vào **Redirect URLs**, ví dụ `http://localhost:3000/**`, `https://your-domain.example/**` và các domain Preview của Vercel mà bạn cho phép. Không dùng wildcard rộng hơn phạm vi domain của dự án.
+5. Để đưa dữ liệu cũ từ browser localStorage lên tài khoản, đăng nhập bằng cùng trình duyệt, mở **Cài đặt → Chuyển dữ liệu trên thiết bị** và xác nhận thay thế dữ liệu trong không gian cá nhân. Dữ liệu cũ không tự động tải lên hoặc được chia sẻ.
 
-1. Tạo một dự án Supabase, sau đó mở **SQL Editor** và chạy toàn bộ nội dung [`supabase/schema.sql`](supabase/schema.sql). Schema tạo các bảng `transactions`, `assets`, `debts`, bật RLS với chính sách chỉ cho phép người dùng truy cập dữ liệu của mình, và thêm hàm khôi phục bản sao lưu an toàn.
-2. Khi chạy website trực tiếp trên máy, sao chép `supabase-config.example.js` thành `supabase-config.js`, rồi điền Project URL và **anon/public key** của dự án. Hai giá trị công khai này có thể dùng trong trình duyệt khi RLS được bật. Không điền service-role/secret key; tệp `supabase-config.js` đã được Git bỏ qua.
-3. Chạy website, mở **Cài đặt → Kết nối tài khoản**, rồi tạo tài khoản hoặc đăng nhập. Nếu bật xác nhận email trong Supabase Auth, hãy xác nhận email trước khi đăng nhập.
-4. Dữ liệu cũ trên thiết bị không tự tải lên. Khi đã đăng nhập, chọn **Chuyển dữ liệu trên thiết bị** và xác nhận nếu muốn thay thế dữ liệu đang có trên tài khoản bằng bản dữ liệu cục bộ.
+## Đăng nhập Google (cần chủ dự án cấu hình)
 
-Khi đăng xuất, ứng dụng quay lại dữ liệu trên thiết bị mà không xóa dữ liệu Supabase. Sao lưu/khôi phục JSON và xóa dữ liệu thao tác trên nguồn dữ liệu đang hoạt động. Chỉ tải cấu hình lên hosting đáng tin cậy; trình duyệt cần kết nối mạng tới Supabase và CDN để dùng đồng bộ.
+1. Trong Google Cloud Console, tạo OAuth Client ID kiểu **Web application**. Thêm domain production, `http://localhost:3000` và từng origin Preview được phép vào **Authorized JavaScript origins**.
+2. Trong Supabase **Authentication → Providers → Google**, bật Google và nhập OAuth Client ID/Client Secret. Supabase hiển thị callback URI theo dạng `https://<project-ref>.supabase.co/auth/v1/callback`; thêm URI chính xác đó vào **Authorized redirect URIs** trong Google Cloud.
+3. Lưu cấu hình Google, rồi kiểm tra Site URL/Redirect URLs ở Supabase. Client secret chỉ được nhập vào Supabase, không commit vào repository. Người dùng sẽ được yêu cầu xác nhận email trước khi chấp nhận lời mời gia đình.
 
-## Triển khai và kết nối Supabase qua Vercel
+## Email mời và liên kết gia đình an toàn
 
-Vercel build website thành các tệp tĩnh trong `dist/`; trong lúc build, ứng dụng tạo `supabase-config.js` từ environment variables. Tệp cấu hình sinh ra không được commit.
+RLS giới hạn mọi truy vấn theo membership của không gian. Link mời chứa token ngẫu nhiên 256-bit; cơ sở dữ liệu chỉ lưu SHA-256 digest, link dùng một lần, hết hạn sau 7 ngày, có thể thu hồi, và lời mời email chỉ được chấp nhận bởi tài khoản có email đã xác minh trùng với người nhận. Giới hạn tối đa 50 lời mời đang hiệu lực cho mỗi không gian. Chỉ owner/admin có thể quản lý lời mời/thành viên; chỉ owner có thể xóa không gian hoặc thay đổi quyền admin. Thành viên có thể xem, thêm, sửa và xóa dữ liệu trong không gian gia đình. Sao lưu/khôi phục/xóa toàn bộ chỉ hoạt động trong không gian cá nhân.
 
-1. Import repository này vào Vercel. Đặt **Root Directory** là thư mục chứa `package.json`; dùng Framework Preset **Other**, Build Command `npm run build`, Output Directory `dist`.
-2. Trong **Project Settings → Environment Variables**, thêm `SUPABASE_URL` bằng Project URL và `SUPABASE_ANON_KEY` bằng **anon/public (publishable) key** trong Supabase. Chọn các môi trường cần dùng: Production, Preview và/hoặc Development. Không thêm service-role/secret key. Các giá trị này được nhúng vào tệp JavaScript công khai lúc build, nên chỉ dùng key dành cho trình duyệt và luôn bật RLS.
-3. Trong Supabase **Authentication → URL Configuration**, đặt **Site URL** thành địa chỉ production của Vercel, ví dụ `https://ten-du-an.vercel.app`. Thêm URL production và các URL preview cần đăng nhập vào **Redirect URLs**.
-4. Lưu cấu hình và deploy/redeploy trên Vercel. Mỗi lần thay đổi environment variables cần build/deploy lại. Mở website, tạo tài khoản trong **Cài đặt → Kết nối tài khoản**, rồi kiểm tra đăng nhập và đồng bộ.
+Gửi email thực hiện qua Supabase Edge Function `send-invite` và Resend; không có service-role key trong client hoặc Edge Function. Chủ dự án cần:
 
-Có thể kiểm tra build trước khi deploy bằng cách đặt hai biến môi trường trên máy rồi chạy `npm run build`. Build sẽ dừng với lỗi rõ ràng nếu thiếu URL/key hoặc phát hiện service-role/secret key. Lệnh `npm start` tiếp tục phục vụ chế độ local; để bật Supabase khi chạy local, dùng tệp `supabase-config.js` như hướng dẫn ở trên.
+1. Cài Supabase CLI, đăng nhập và liên kết thư mục này với project (`supabase login`, `supabase link --project-ref your-project-ref`).
+2. Xác minh domain gửi thư trong Resend và chọn địa chỉ `from` trên domain đó.
+3. Đặt các secrets cho Edge Function rồi deploy:
+
+   ```powershell
+   supabase secrets set RESEND_API_KEY="re_replace-with-your-key" INVITE_FROM_EMAIL="finance@your-domain.example" PUBLIC_APP_URL="https://your-domain.example"
+   supabase functions deploy send-invite
+   ```
+
+`SUPABASE_URL` và `SUPABASE_ANON_KEY` do môi trường Supabase Edge Functions cung cấp. `PUBLIC_APP_URL` phải là origin triển khai ứng dụng được tin cậy; cập nhật lại khi đổi domain. Nếu Resend gửi thất bại, lời mời được thu hồi tự động. Tạo liên kết chia sẻ không cần gửi email; link chỉ được phát hành sau khi RLS/RPC xác nhận người tạo là owner/admin.
+
+## Triển khai Vercel
+
+1. Import repository vào Vercel. Chọn **Framework Preset: Other**, Build Command `npm run build`, Output Directory `dist`.
+2. Trong **Project Settings → Environment Variables**, thêm `SUPABASE_URL` và `SUPABASE_ANON_KEY`, dùng public anon/publishable key cho Production và các Preview cần thiết. Những giá trị này được nhúng vào client bundle; không bao giờ đặt service-role key ở đây. Build từ chối các giá trị có dạng secret/service-role.
+3. Cấu hình Supabase Auth URL và Google OAuth như trên cho từng domain dùng được; đặt `PUBLIC_APP_URL` của Edge Function trùng domain chính thức muốn tạo link mời.
+4. Triển khai `send-invite` riêng bằng Supabase CLI như phần trên. Sau đó build/redeploy Vercel khi thay đổi biến môi trường hoặc domain.
+
+RLS là ranh giới bảo vệ dữ liệu; không dựa vào bộ lọc UI. Mọi record phải thuộc một `space_id` và chỉ thành viên của đúng space mới đọc/ghi được. Chạy `npm test` để kiểm tra các guard quan trọng ở client/schema/Edge Function; kiểm tra đăng nhập, Google OAuth, RLS và gửi email thật cần project Supabase/Google/Resend đã cấu hình bởi chủ dự án.
