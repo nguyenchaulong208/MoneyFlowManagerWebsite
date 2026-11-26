@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
     <meta name="theme-color" content="#f5f6f2" />
     <meta name="description" content="Theo dõi thu chi, tài sản và mục tiêu tài chính của bạn." />
     <title>Dòng Tiền — Tài chính cá nhân</title>
@@ -10,7 +11,16 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div class="app-layout">
+    <section class="auth-gate" id="authGate" aria-live="polite">
+      <div class="auth-gate-card">
+        <span class="brand-mark">d<span>·</span></span>
+        <p class="eyebrow">DÒNG TIỀN · KHÔNG GIAN RIÊNG TƯ</p>
+        <h1 id="authGateTitle">Đang kiểm tra phiên đăng nhập…</h1>
+        <p id="authGateMessage">Dữ liệu tài chính chỉ hiển thị sau khi bạn đăng nhập.</p>
+        <button class="primary-button" id="authGateSettings" type="button" data-open-settings hidden>Đăng nhập hoặc tạo tài khoản</button>
+      </div>
+    </section>
+    <div class="app-layout" id="appContent" hidden>
       <aside class="sidebar">
         <a class="brand" href="#" data-nav="overview" aria-label="Dòng Tiền — tổng quan">
           <span class="brand-mark">d<span>·</span></span>
@@ -34,6 +44,7 @@
       <main class="app-shell">
         <header class="topbar">
           <div><p class="eyebrow">THỨC TỈNH CÙNG DÒNG TIỀN</p><p class="topbar-caption">Một góc nhìn rõ ràng hơn về tài chính của bạn.</p></div>
+          <label class="space-picker" id="spacePickerWrap" hidden>KHÔNG GIAN<select id="activeSpaceSelect" aria-label="Không gian tài chính"></select></label>
           <button class="icon-button" data-open-settings aria-label="Cài đặt">⚙</button>
         </header>
         <div id="cloudStatus" class="cloud-status" role="status" hidden></div>
@@ -108,7 +119,7 @@
       </main>
     </div>
 
-    <nav class="bottom-nav" aria-label="Điều hướng chính">
+    <nav class="bottom-nav" id="appBottomNav" aria-label="Điều hướng chính" hidden>
       <button class="active" data-nav="overview"><span>◫</span><small>Tổng quan</small></button>
       <button data-nav="transactions"><span>⇄</span><small>Giao dịch</small></button>
       <button data-nav="assets"><span>▤</span><small>Tài sản</small></button>
@@ -141,9 +152,39 @@
             <label>MẬT KHẨU<input id="authPassword" type="password" autocomplete="current-password" minlength="6" placeholder="Ít nhất 6 ký tự" required /></label>
             <p class="form-error" id="authError" role="alert" hidden></p>
             <div class="auth-actions"><button class="secondary-button" type="submit" data-auth-action="signin">Đăng nhập</button><button class="primary-button" type="submit" data-auth-action="signup">Tạo tài khoản</button></div>
+            <button class="google-button" id="googleSignIn" type="button">Tiếp tục với Google</button>
           </form>
           <div id="signedInControls" hidden><p class="signed-in-email" id="signedInEmail"></p><button class="secondary-button signout-button" id="signOutButton" type="button">Đăng xuất</button></div>
           <button class="action-row import-local-row" id="uploadLocalData" hidden><span>⇧</span><div><b>Chuyển dữ liệu trên thiết bị</b><small>Tải dữ liệu hiện có lên tài khoản Supabase</small></div><i>›</i></button>
+        </section>
+        <section class="family-card" id="familyControls" hidden>
+          <div class="family-heading"><div><p class="eyebrow">THEO DÕI CÙNG NHAU</p><h3>Không gian gia đình</h3></div></div>
+          <p class="setup-hint">Dữ liệu cá nhân vẫn riêng tư. Chỉ dữ liệu bạn tạo trong không gian gia đình mới được chia sẻ với thành viên.</p>
+          <form id="createFamilyForm" class="inline-form">
+            <label>TẠO KHÔNG GIAN MỚI<input id="familyNameInput" maxlength="80" placeholder="Ví dụ: Gia đình Nguyễn" required /></label>
+            <button class="secondary-button" type="submit">Tạo không gian</button>
+          </form>
+          <div id="spaceManagement" hidden>
+            <h4 id="familySpaceTitle"></h4>
+            <div class="invite-actions" id="inviteActions" hidden>
+              <form id="emailInviteForm" class="inline-form">
+                <label>MỜI BẰNG EMAIL<input id="inviteEmailInput" type="email" autocomplete="email" placeholder="nguoi-than@email.com" required /></label>
+                <button class="secondary-button" type="submit">Gửi lời mời</button>
+              </form>
+              <button class="secondary-button invite-link-button" id="createInviteLink" type="button">Tạo liên kết mời an toàn</button>
+              <div id="inviteLinkResult" class="invite-link-result" hidden>
+                <input id="inviteLinkValue" readonly aria-label="Liên kết mời" />
+                <button class="secondary-button" id="copyInviteLink" type="button">Sao chép</button>
+              </div>
+            </div>
+            <h4>Thành viên</h4>
+            <div id="memberList" class="member-list"></div>
+            <h4 id="invitesHeading" hidden>Lời mời đang mở</h4>
+            <div id="inviteList" class="member-list"></div>
+            <button class="danger-action" id="deleteFamilySpace" type="button" hidden>Xóa không gian gia đình và toàn bộ dữ liệu</button>
+          </div>
+          <p class="form-error" id="familyError" role="alert" hidden></p>
+          <p class="form-error" id="inviteError" role="alert" hidden></p>
         </section>
         <h3>DỮ LIỆU CỦA BẠN</h3>
         <button class="action-row" id="exportBackup"><span>⇧</span><div><b>Sao lưu ra tệp JSON</b><small>Tạo bản sao lưu dữ liệu hiện tại</small></div><i>›</i></button>

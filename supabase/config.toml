@@ -1,0 +1,4 @@
+project_id = "money-flow-manager"
+
+[functions.send-invite]
+verify_jwt = true
