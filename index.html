@@ -3,115 +3,158 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#23866D" />
-    <title>Dòng Tiền - Quản lý tài chính cá nhân</title>
+    <meta name="theme-color" content="#f5f6f2" />
+    <meta name="description" content="Theo dõi thu chi, tài sản và mục tiêu tài chính của bạn." />
+    <title>Dòng Tiền — Tài chính cá nhân</title>
     <link rel="icon" href="assets/icon.png" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="app-shell">
-      <div id="storageNotice" class="storage-notice" hidden></div>
+    <div class="app-layout">
+      <aside class="sidebar">
+        <a class="brand" href="#" data-nav="overview" aria-label="Dòng Tiền — tổng quan">
+          <span class="brand-mark">d<span>·</span></span>
+          <span>Dòng Tiền<small>PERSONAL FINANCE</small></span>
+        </a>
+        <p class="nav-caption">KHÔNG GIAN CỦA BẠN</p>
+        <nav class="side-nav" aria-label="Điều hướng chính">
+          <button class="active" data-nav="overview"><span>◫</span>Tổng quan</button>
+          <button data-nav="transactions"><span>⇄</span>Giao dịch</button>
+          <button data-nav="assets"><span>▤</span>Tài sản & nợ</button>
+          <button data-nav="analysis"><span>⌁</span>Phân tích</button>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="sidebar-tip"><span>✦</span><b>Thói quen nhỏ,<br />tài chính vững vàng.</b><small>Mỗi giao dịch đều giúp bạn hiểu mình hơn.</small></div>
+          <button class="profile-button" data-open-settings>
+            <span class="profile-avatar">◉</span><span><b>Tài khoản của bạn</b><small id="sidebarAccountStatus">Đang dùng trên thiết bị</small></span><i>⚙</i>
+          </button>
+        </div>
+      </aside>
 
-      <section class="page active" id="overviewPage" data-page="overview">
-        <header class="page-heading">
-          <div><p class="eyebrow">TÀI CHÍNH CỦA BẠN</p><h1>Tổng quan</h1></div>
+      <main class="app-shell">
+        <header class="topbar">
+          <div><p class="eyebrow">THỨC TỈNH CÙNG DÒNG TIỀN</p><p class="topbar-caption">Một góc nhìn rõ ràng hơn về tài chính của bạn.</p></div>
           <button class="icon-button" data-open-settings aria-label="Cài đặt">⚙</button>
         </header>
-        <article class="balance-card">
-          <div class="balance-top">
-            <div><p class="balance-label">TÀI SẢN RÒNG</p><p class="balance-caption">Tổng tài sản trừ khoản phải trả</p></div>
-            <div class="balance-icon">↗</div>
+        <div id="cloudStatus" class="cloud-status" role="status" hidden></div>
+        <div id="storageNotice" class="storage-notice" role="status" hidden></div>
+
+        <section class="page active" id="overviewPage" data-page="overview">
+          <header class="page-heading">
+            <div><p class="eyebrow">BỨC TRANH TÀI CHÍNH</p><h1>Tổng quan</h1></div>
+            <span class="date-chip" id="todayLabel"></span>
+          </header>
+          <article class="balance-card">
+            <div class="balance-top">
+              <div><p class="balance-label">TÀI SẢN RÒNG</p><p class="balance-caption">Tổng tài sản sau khi trừ các khoản nợ</p></div>
+              <span class="balance-icon">↗</span>
+            </div>
+            <strong id="netWorth" class="balance-value">0 ₫</strong>
+            <div class="balance-footer">
+              <div><span class="balance-dot"></span><p>Khả dụng</p><strong id="availableValue">0 ₫</strong></div>
+              <div class="balance-divider"></div>
+              <div><span class="balance-dot muted"></span><p>Nợ phải trả</p><strong id="debtValue">0 ₫</strong></div>
+            </div>
+            <span class="balance-orbit orbit-one"></span><span class="balance-orbit orbit-two"></span>
+          </article>
+
+          <div class="section-heading">
+            <div><h2>Dòng tiền tháng này</h2><p id="monthLabel"></p></div>
+            <button class="text-button" data-nav="analysis">Xem báo cáo <span>↗</span></button>
           </div>
-          <strong id="netWorth" class="balance-value">0 ₫</strong>
-          <div class="balance-footer">
-            <div><p>Khả dụng</p><strong id="availableValue">0 ₫</strong></div>
-            <div class="divider"></div>
-            <div><p>Nợ phải trả</p><strong id="debtValue">0 ₫</strong></div>
+          <div class="stats-grid">
+            <article class="stat-card income-card"><div class="stat-heading"><span class="stat-icon income">↙</span><span class="stat-trend">THU VÀO</span></div><p>Thu nhập</p><strong id="monthIncome">0 ₫</strong></article>
+            <article class="stat-card expense-card"><div class="stat-heading"><span class="stat-icon expense">↗</span><span class="stat-trend">CHI RA</span></div><p>Chi tiêu</p><strong id="monthExpense">0 ₫</strong></article>
           </div>
-        </article>
-        <div class="section-heading">
-          <div><h2>Dòng tiền tháng này</h2><p id="monthLabel"></p></div>
-          <button class="icon-button soft" data-nav="analysis" aria-label="Xem phân tích">▥</button>
-        </div>
-        <div class="stats-grid">
-          <article class="stat-card"><span class="stat-icon income">↙</span><p>Thu nhập</p><strong id="monthIncome">0 ₫</strong></article>
-          <article class="stat-card"><span class="stat-icon expense">↗</span><p>Chi tiêu</p><strong id="monthExpense">0 ₫</strong></article>
-        </div>
-        <div class="quick-actions">
-          <button class="primary-button" data-open-form="transaction">＋ Ghi giao dịch</button>
-          <button class="secondary-button" data-nav="assets">▣ Tài sản & nợ</button>
-        </div>
-        <div class="section-heading"><h2>Giao dịch gần đây</h2><button class="text-button" data-nav="transactions">Xem tất cả</button></div>
-        <div id="recentTransactions"></div>
-        <p class="privacy-note">◉ Dữ liệu được lưu trên thiết bị của bạn.</p>
-      </section>
+          <div class="quick-actions">
+            <button class="primary-button" data-open-form="transaction"><span>＋</span> Ghi giao dịch</button>
+            <button class="secondary-button" data-nav="assets"><span>▤</span> Tài sản & nợ</button>
+          </div>
+          <div class="section-heading recent-heading"><div><h2>Giao dịch gần đây</h2><p>Dòng tiền mới nhất của bạn</p></div><button class="text-button" data-nav="transactions">Xem tất cả <span>→</span></button></div>
+          <div class="recent-card" id="recentTransactions"></div>
+          <p class="privacy-note"><span>◉</span><span id="privacyNoteText">Dữ liệu của bạn luôn được giữ riêng tư.</span></p>
+        </section>
 
-      <section class="page" id="transactionsPage" data-page="transactions">
-        <header class="page-heading">
-          <div><p class="eyebrow">SỔ THU CHI</p><h1>Giao dịch</h1></div>
-          <button class="icon-button primary" data-open-form="transaction" aria-label="Thêm giao dịch">＋</button>
-        </header>
-        <article class="summary-card"><p>SỐ GIAO DỊCH</p><div><strong id="filteredCount">0</strong><strong id="filteredSum">0 ₫</strong></div></article>
-        <div class="filters" id="transactionFilters">
-          <button class="active" data-filter="all">Tất cả</button><button data-filter="income">Thu</button><button data-filter="expense">Chi</button>
-        </div>
-        <div id="transactionList"></div>
-        <p class="hint" id="deleteHint" hidden>Nhấn giữ một giao dịch để xóa.</p>
-      </section>
+        <section class="page" id="transactionsPage" data-page="transactions">
+          <header class="page-heading">
+            <div><p class="eyebrow">SỔ THU CHI</p><h1>Giao dịch</h1><p class="page-subtitle">Mọi khoản thu và chi, trong tầm mắt.</p></div>
+            <button class="icon-button primary" data-open-form="transaction" aria-label="Thêm giao dịch">＋</button>
+          </header>
+          <article class="summary-card"><div><p>TỔNG GIAO DỊCH</p><strong id="filteredCount">0</strong><small>khoản đã ghi nhận</small></div><div class="summary-total"><p>DÒNG TIỀN RÒNG</p><strong id="filteredSum">0 ₫</strong></div></article>
+          <div class="filters" id="transactionFilters">
+            <button class="active" data-filter="all">Tất cả</button><button data-filter="income">Thu nhập</button><button data-filter="expense">Chi tiêu</button>
+          </div>
+          <div class="transaction-list" id="transactionList"></div>
+          <p class="hint" id="deleteHint" hidden>Chọn giao dịch để xóa.</p>
+        </section>
 
-      <section class="page" id="assetsPage" data-page="assets">
-        <header class="page-heading"><div><p class="eyebrow">BẢNG CÂN ĐỐI</p><h1>Tài sản & nợ</h1></div></header>
-        <article class="net-card"><p>GIÁ TRỊ RÒNG</p><strong id="assetNetValue">0 ₫</strong><div><div><span>Tổng tài sản</span><b id="assetTotal">0 ₫</b></div><i></i><div><span>Tổng khoản nợ</span><b id="debtTotal">0 ₫</b></div></div></article>
-        <div class="section-heading"><h2>Tài sản</h2><button class="small-button success" data-open-form="asset">＋ Thêm tài sản</button></div>
-        <div id="assetList"></div>
-        <div class="section-heading"><h2>Khoản phải trả</h2><button class="small-button danger" data-open-form="debt">＋ Thêm khoản nợ</button></div>
-        <div id="debtList"></div>
-        <p class="hint">Nhấn giữ khoản mục để xóa.</p>
-      </section>
+        <section class="page" id="assetsPage" data-page="assets">
+          <header class="page-heading"><div><p class="eyebrow">BẢNG CÂN ĐỐI</p><h1>Tài sản & nợ</h1><p class="page-subtitle">Biết mình đang có gì và còn nợ bao nhiêu.</p></div></header>
+          <article class="net-card"><div><p>GIÁ TRỊ RÒNG</p><strong id="assetNetValue">0 ₫</strong></div><div class="net-breakdown"><div><span>Tổng tài sản</span><b id="assetTotal">0 ₫</b></div><i></i><div><span>Khoản phải trả</span><b id="debtTotal">0 ₫</b></div></div></article>
+          <div class="section-heading"><h2>Tài sản</h2><button class="small-button success" data-open-form="asset">＋ Thêm tài sản</button></div>
+          <div id="assetList"></div>
+          <div class="section-heading"><h2>Khoản phải trả</h2><button class="small-button danger" data-open-form="debt">＋ Thêm khoản nợ</button></div>
+          <div id="debtList"></div>
+          <p class="hint">Chọn khoản mục để xóa.</p>
+        </section>
 
-      <section class="page" id="analysisPage" data-page="analysis">
-        <header class="page-heading"><div><p class="eyebrow">BÁO CÁO CÁ NHÂN</p><h1>Phân tích</h1></div></header>
-        <article class="period-card"><span>◷</span><div><p>KỲ BÁO CÁO</p><strong id="analysisMonth"></strong></div></article>
-        <article class="panel"><h2>Thu và chi</h2><div class="bar-line"><span>Thu nhập</span><strong id="analysisIncome" class="green"></strong></div><div class="track"><i id="incomeBar" class="income-bar"></i></div><div class="bar-line second"><span>Chi tiêu</span><strong id="analysisExpense" class="red"></strong></div><div class="track"><i id="expenseBar" class="expense-bar"></i></div><div class="net-row"><span>Dòng tiền ròng</span><strong id="analysisNet"></strong></div></article>
-        <article class="insight-card"><h2>Gợi ý từ dữ liệu của bạn</h2><p id="analysisInsight"></p><small>Phân tích cơ bản chạy trên thiết bị, không cần gửi dữ liệu đi đâu.</small></article>
-        <h2 class="content-title">Chi tiêu theo danh mục</h2><div id="categoryList"></div>
-      </section>
-    </main>
+        <section class="page" id="analysisPage" data-page="analysis">
+          <header class="page-heading"><div><p class="eyebrow">BÁO CÁO CÁ NHÂN</p><h1>Phân tích</h1><p class="page-subtitle">Những tín hiệu hữu ích từ thói quen chi tiêu.</p></div></header>
+          <article class="period-card"><span>◷</span><div><p>KỲ BÁO CÁO</p><strong id="analysisMonth"></strong></div><b class="period-status">THÁNG NÀY</b></article>
+          <article class="panel"><div class="panel-title"><h2>Thu và chi</h2><span>₫ VND</span></div><div class="bar-line"><span>Thu nhập</span><strong id="analysisIncome" class="green"></strong></div><div class="track"><i id="incomeBar" class="income-bar"></i></div><div class="bar-line second"><span>Chi tiêu</span><strong id="analysisExpense" class="red"></strong></div><div class="track"><i id="expenseBar" class="expense-bar"></i></div><div class="net-row"><span>Dòng tiền ròng</span><strong id="analysisNet"></strong></div></article>
+          <article class="insight-card"><span class="insight-icon">✦</span><div><h2>Góc nhìn của bạn</h2><p id="analysisInsight"></p><small>Phân tích cơ bản, dựa trên dữ liệu riêng của bạn.</small></div></article>
+          <h2 class="content-title">Chi tiêu theo danh mục</h2><div id="categoryList"></div>
+        </section>
+      </main>
+    </div>
 
     <nav class="bottom-nav" aria-label="Điều hướng chính">
-      <button class="active" data-nav="overview"><span>⌂</span><small>Tổng quan</small></button>
+      <button class="active" data-nav="overview"><span>◫</span><small>Tổng quan</small></button>
       <button data-nav="transactions"><span>⇄</span><small>Giao dịch</small></button>
-      <button data-nav="assets"><span>▣</span><small>Tài sản</small></button>
-      <button data-nav="analysis"><span>▥</span><small>Phân tích</small></button>
+      <button data-nav="assets"><span>▤</span><small>Tài sản</small></button>
+      <button data-nav="analysis"><span>⌁</span><small>Phân tích</small></button>
     </nav>
 
     <div class="modal" id="formModal" hidden>
       <button class="modal-backdrop" data-close-form aria-label="Đóng"></button>
       <form class="form-sheet" id="financeForm">
-        <div class="handle"></div><div class="sheet-heading"><h2 id="formTitle">Ghi giao dịch</h2><button type="button" data-close-form aria-label="Đóng">×</button></div>
+        <div class="handle"></div><div class="sheet-heading"><div><p class="eyebrow">CẬP NHẬT SỔ TÀI CHÍNH</p><h2 id="formTitle">Ghi giao dịch</h2></div><button type="button" data-close-form aria-label="Đóng">×</button></div>
         <div id="transactionTypeGroup" class="segment"><button type="button" class="active" data-type="expense">Chi tiêu</button><button type="button" data-type="income">Thu nhập</button></div>
         <label>SỐ TIỀN<input id="amountInput" name="amount" inputmode="numeric" placeholder="0" required /></label>
         <div id="transactionFields"><label>DANH MỤC<select id="categoryInput"></select></label><label>GHI CHÚ<input id="noteInput" placeholder="Ví dụ: cà phê sáng" /></label></div>
         <div id="assetFields" hidden><label>TÊN KHOẢN MỤC<input id="nameInput" placeholder="Ví dụ: Tiết kiệm ngân hàng" /></label><label>LOẠI TÀI SẢN<select id="assetKindInput"><option value="cash">Tiền mặt & tiền gửi</option><option value="investment">Đầu tư</option><option value="property">Bất động sản</option><option value="business">Kinh doanh</option><option value="other">Tài sản khác</option></select></label></div>
         <div id="debtFields" hidden><label>TÊN KHOẢN MỤC<input id="debtNameInput" placeholder="Ví dụ: Thẻ tín dụng" /></label><label>LOẠI KHOẢN PHẢI TRẢ<select id="debtKindInput"><option>Vay</option><option>Thẻ tín dụng</option><option>Trả góp</option><option>Khác</option></select></label><label>NGÀY ĐẾN HẠN (TÙY CHỌN)<input id="dueDateInput" type="date" /></label></div>
-        <p class="form-error" id="formError" hidden></p>
-        <button class="primary-button submit" type="submit">Lưu khoản mục →</button>
+        <p class="form-error" id="formError" role="alert" hidden></p>
+        <button class="primary-button submit" type="submit">Lưu khoản mục <span>→</span></button>
       </form>
     </div>
 
     <div class="modal" id="settingsModal" hidden>
       <button class="modal-backdrop" data-close-settings aria-label="Đóng"></button>
-      <section class="settings-panel">
-        <header class="sheet-heading"><div><p class="eyebrow">CÁ NHÂN HÓA</p><h2>Cài đặt</h2></div><button data-close-settings aria-label="Đóng">×</button></header>
-        <article class="privacy-card"><b>◉ Riêng tư là mặc định</b><p>Dữ liệu tài chính được lưu trong trình duyệt trên thiết bị của bạn.</p></article>
+      <section class="settings-panel" aria-labelledby="settingsTitle">
+        <header class="sheet-heading"><div><p class="eyebrow">CÁ NHÂN HÓA</p><h2 id="settingsTitle">Cài đặt</h2></div><button data-close-settings aria-label="Đóng">×</button></header>
+        <section class="account-card">
+          <div class="account-card-heading"><span class="account-icon">◉</span><div><b>Kết nối tài khoản</b><small id="connectionSummary">Đang lưu dữ liệu trên thiết bị này</small></div></div>
+          <p id="cloudSetupHint" class="setup-hint">Kết nối Supabase để đồng bộ dữ liệu giữa các thiết bị. Bạn cần tạo dự án và cài đặt thông tin công khai trong tệp cấu hình.</p>
+          <form id="authForm" hidden>
+            <label>EMAIL<input id="authEmail" type="email" autocomplete="email" placeholder="ban@email.com" required /></label>
+            <label>MẬT KHẨU<input id="authPassword" type="password" autocomplete="current-password" minlength="6" placeholder="Ít nhất 6 ký tự" required /></label>
+            <p class="form-error" id="authError" role="alert" hidden></p>
+            <div class="auth-actions"><button class="secondary-button" type="submit" data-auth-action="signin">Đăng nhập</button><button class="primary-button" type="submit" data-auth-action="signup">Tạo tài khoản</button></div>
+          </form>
+          <div id="signedInControls" hidden><p class="signed-in-email" id="signedInEmail"></p><button class="secondary-button signout-button" id="signOutButton" type="button">Đăng xuất</button></div>
+          <button class="action-row import-local-row" id="uploadLocalData" hidden><span>⇧</span><div><b>Chuyển dữ liệu trên thiết bị</b><small>Tải dữ liệu hiện có lên tài khoản Supabase</small></div><i>›</i></button>
+        </section>
         <h3>DỮ LIỆU CỦA BẠN</h3>
-        <button class="action-row" id="exportBackup"><span>⇧</span><div><b>Sao lưu ra tệp JSON</b><small>Lưu hoặc chia sẻ bản sao dữ liệu</small></div><i>›</i></button>
-        <button class="action-row" id="importBackup"><span>⇩</span><div><b>Khôi phục từ tệp JSON</b><small>Tệp nhập sẽ thay thế dữ liệu hiện có</small></div><i>›</i></button>
+        <button class="action-row" id="exportBackup"><span>⇧</span><div><b>Sao lưu ra tệp JSON</b><small>Tạo bản sao lưu dữ liệu hiện tại</small></div><i>›</i></button>
+        <button class="action-row" id="importBackup"><span>⇩</span><div><b>Khôi phục từ tệp JSON</b><small>Tệp sao lưu thay thế dữ liệu hiện tại</small></div><i>›</i></button>
         <input id="backupFileInput" type="file" accept="application/json,.json" hidden />
-        <button class="action-row danger-row" id="clearData"><span>⌫</span><div><b>Xóa dữ liệu trên thiết bị</b><small>Xóa giao dịch, tài sản và khoản nợ</small></div><i>›</i></button>
-        <p class="version">Dòng Tiền · Phiên bản HTML 1.0</p>
+        <button class="action-row danger-row" id="clearData"><span>⌫</span><div><b>Xóa dữ liệu hiện tại</b><small>Xóa giao dịch, tài sản và khoản nợ</small></div><i>›</i></button>
+        <p class="version">Dòng Tiền · Tài chính của bạn, rõ ràng hơn.</p>
       </section>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <script src="supabase-config.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

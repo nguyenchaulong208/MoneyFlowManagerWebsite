@@ -5,6 +5,7 @@ node_modules
 npm-debug.log*
 dist/
 tmp/
+supabase-config.js
 
 # System files
 .DS_Store
