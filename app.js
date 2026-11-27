@@ -14,6 +14,7 @@
     hasMoreAssets: false, assetCursor: null, hasMoreDebts: false, debtCursor: null,
     hasMoreMovements: false, movementCursor: null,
   });
+  const STARTUP_TIMEOUT_MS = 15000;
   let data = emptyData();
   let filter = 'all';
   let formMode = 'transaction';
@@ -21,9 +22,12 @@
   let activeUser = null;
   let activeSpace = null;
   let spaces = [];
+  let editingItem = null;
   let authLoading = true;
   let loadingUserId = null;
   let authGeneration = 0;
+  let authStateRevision = 0;
+  let sessionCheckGeneration = 0;
   let supabaseClient = null;
   let authGateError = '';
   let pendingInviteToken = new URLSearchParams(window.location.hash.slice(1)).get('invite');
@@ -244,6 +248,8 @@
     $('#appContent').hidden = !activeUser || !activeSpace || authLoading;
     $('#appBottomNav').hidden = !activeUser || !activeSpace || authLoading;
     $('#authGateSettings').hidden = !configPresent || authLoading;
+    $('#authGateRetry').hidden = !supabaseClient || !authGateError || authLoading;
+    $('#authGateRetry').disabled = authLoading;
     $('#authGateSettings').textContent = signedIn ? 'Mở cài đặt tài khoản' : 'Đăng nhập hoặc tạo tài khoản';
     if (authGateError) {
       $('#authGateTitle').textContent = 'Không thể mở dữ liệu tài chính';
@@ -283,22 +289,93 @@
       if (isServiceRoleKey(config.anonKey)) throw new Error('Không dùng service-role/secret key trong website. Hãy dùng anon/public (publishable) key.');
       supabaseClient = window.supabase.createClient(config.url, config.anonKey);
       supabaseClient.auth.onAuthStateChange((_event, session) => {
+        authStateRevision += 1;
         void handleSession(session);
       });
-      void supabaseClient.auth.getSession().then(({ data, error }) => {
-        if (error) throw error;
-        return handleSession(data.session);
-      }).catch((error) => {
-        authLoading = false;
-        authGateError = error.message;
-        renderConnection();
-        setCloudStatus(`Không thể kiểm tra phiên đăng nhập: ${error.message}`, true);
-      });
+      void checkAuthSession();
     } catch (error) {
       authLoading = false;
-      authGateError = error.message;
-      $('#cloudSetupHint').textContent = error.message || 'Không thể khởi tạo kết nối Supabase. Kiểm tra tệp cấu hình.';
+      const knownConfigErrors = [
+        'Cấu hình Supabase chưa hợp lệ. Hãy thay URL và anon key mẫu trong supabase-config.js.',
+        'Không dùng service-role/secret key trong website. Hãy dùng anon/public (publishable) key.',
+      ];
+      authGateError = knownConfigErrors.includes(error.message)
+        ? error.message
+        : 'Không thể khởi tạo kết nối Supabase. Kiểm tra URL và public key trong tệp cấu hình.';
+      $('#cloudSetupHint').textContent = authGateError;
       renderConnection();
+    }
+  }
+
+  function withStartupTimeout(request, operation) {
+    let timerId;
+    const timeout = new Promise((_, reject) => {
+      timerId = window.setTimeout(() => {
+        const error = new Error('Startup request timed out');
+        error.name = 'StartupTimeoutError';
+        error.operation = operation;
+        reject(error);
+      }, STARTUP_TIMEOUT_MS);
+    });
+    return Promise.race([Promise.resolve(request), timeout]).finally(() => window.clearTimeout(timerId));
+  }
+
+  function startupErrorCode(error) {
+    return typeof error?.code === 'string' && /^[A-Za-z0-9_-]{1,24}$/.test(error.code)
+      ? error.code : '';
+  }
+
+  function startupErrorMessage(operation, error) {
+    const messages = {
+      session: 'Không thể xác nhận phiên đăng nhập.',
+      invite: 'Không thể xác nhận lời mời tham gia.',
+      spaces: 'Không thể tải danh sách không gian tài chính.',
+      data: 'Không thể tải dữ liệu tài chính.',
+      family: 'Không thể tải thông tin không gian gia đình.',
+    };
+    const reason = error?.name === 'StartupTimeoutError'
+      ? ' Máy chủ phản hồi quá lâu.'
+      : ' Kiểm tra kết nối, cấu hình Supabase và các migration.';
+    const code = startupErrorCode(error);
+    return `${messages[operation] || 'Không thể khởi động ứng dụng.'}${reason} Hãy thử lại; dữ liệu đã lưu không bị xóa.${code ? ` (mã ${code})` : ''}`;
+  }
+
+  function failAuthStartup(operation, error, generation = null) {
+    if (generation !== null && generation !== authGeneration) return;
+    authGeneration += 1;
+    loadingUserId = null;
+    activeSpace = null;
+    spaces = [];
+    data = emptyData();
+    authLoading = false;
+    authGateError = startupErrorMessage(operation, error);
+    const code = startupErrorCode(error);
+    console.warn('Finance startup request failed', {
+      operation,
+      timedOut: error?.name === 'StartupTimeoutError',
+      code: code || undefined,
+    });
+    renderConnection();
+    renderAll();
+    setCloudStatus(authGateError, true);
+  }
+
+  async function checkAuthSession() {
+    if (!supabaseClient) return;
+    const checkGeneration = ++sessionCheckGeneration;
+    const stateRevision = authStateRevision;
+    authLoading = true;
+    authGateError = '';
+    setCloudStatus('');
+    renderConnection();
+    try {
+      const { data: result, error } = await withStartupTimeout(supabaseClient.auth.getSession(), 'session');
+      if (checkGeneration !== sessionCheckGeneration || stateRevision !== authStateRevision) return;
+      if (error) throw error;
+      await handleSession(result.session);
+    } catch (error) {
+      if (checkGeneration !== sessionCheckGeneration || stateRevision !== authStateRevision) return;
+      failAuthStartup('session', error);
     }
   }
 
@@ -328,16 +405,21 @@
     data = emptyData();
     renderConnection();
     renderAll();
+    let operation = 'invite';
     try {
       if (pendingInviteToken) {
-        const { error } = await supabaseClient.rpc('accept_space_invite', { p_token: pendingInviteToken });
+        const { error } = await withStartupTimeout(
+          supabaseClient.rpc('accept_space_invite', { p_token: pendingInviteToken }),
+          operation,
+        );
         if (error) throw error;
         pendingInviteToken = null;
         sessionStorage.removeItem('dong-tien-pending-invite');
         window.history.replaceState(null, '', window.location.pathname);
         setCloudStatus('Đã tham gia không gian gia đình.');
       }
-      if (!await loadSpaces(generation)) return;
+      operation = 'spaces';
+      if (!await withStartupTimeout(loadSpaces(generation), operation)) return;
       const savedSpaceId = sessionStorage.getItem('dong-tien-active-space');
       activeSpace = spaces.find((space) => space.id === savedSpaceId)
         || spaces.find((space) => space.kind === 'personal')
@@ -346,7 +428,8 @@
       if (!activeSpace) throw new Error('Tài khoản chưa có không gian tài chính. Hãy chạy lại supabase/schema.sql.');
       $('#activeSpaceSelect').value = activeSpace.id;
       sessionStorage.setItem('dong-tien-active-space', activeSpace.id);
-      const loadedData = await loadSpaceData(activeSpace.id, filter);
+      operation = 'data';
+      const loadedData = await withStartupTimeout(loadSpaceData(activeSpace.id, filter), operation);
       if (generation !== authGeneration) return;
       data = loadedData;
       setCloudStatus('');
@@ -354,14 +437,11 @@
       loadingUserId = null;
       renderConnection();
       renderAll();
-      await renderFamilyManagement();
+      operation = 'family';
+      await withStartupTimeout(renderFamilyManagement(), operation);
     } catch (error) {
       if (generation !== authGeneration) return;
-      authLoading = false;
-      loadingUserId = null;
-      authGateError = error.message;
-      renderConnection();
-      setCloudStatus(`Không tải được dữ liệu từ Supabase: ${error.message}`, true);
+      failAuthStartup(operation, error, generation);
     }
   }
 
@@ -662,21 +742,21 @@
     data = emptyData();
     renderConnection();
     renderAll();
+    let operation = 'data';
     try {
-      const loadedData = await loadSpaceData(activeSpace.id, filter);
+      const loadedData = await withStartupTimeout(loadSpaceData(activeSpace.id, filter), operation);
       if (generation !== authGeneration) return;
       data = loadedData;
       sessionStorage.setItem('dong-tien-active-space', activeSpace.id);
       authLoading = false;
       renderConnection();
       renderAll();
-      await renderFamilyManagement();
+      operation = 'family';
+      await withStartupTimeout(renderFamilyManagement(), operation);
       setCloudStatus('');
     } catch (error) {
       if (generation !== authGeneration) return;
-      authLoading = false;
-      renderConnection();
-      setCloudStatus(`Không tải được dữ liệu của không gian này: ${error.message}`, true);
+      failAuthStartup(operation, error, generation);
     }
   }
 
@@ -687,24 +767,28 @@
     data = emptyData();
     renderConnection();
     renderAll();
+    let operation = 'spaces';
     try {
-      if (!await loadSpaces(generation)) return;
+      if (!await withStartupTimeout(loadSpaces(generation), operation)) return false;
       activeSpace = spaces.find((space) => space.id === nextSpaceId) || spaces.find((space) => space.kind === 'personal') || spaces[0];
       if (!activeSpace) throw new Error('Không tìm thấy không gian tài chính.');
       $('#activeSpaceSelect').value = activeSpace.id;
-      const loadedData = await loadSpaceData(activeSpace.id, filter);
+      operation = 'data';
+      const loadedData = await withStartupTimeout(loadSpaceData(activeSpace.id, filter), operation);
       if (generation !== authGeneration) return;
       data = loadedData;
       sessionStorage.setItem('dong-tien-active-space', activeSpace.id);
       authLoading = false;
       renderConnection();
       renderAll();
-      await renderFamilyManagement();
+      operation = 'family';
+      await withStartupTimeout(renderFamilyManagement(), operation);
+      return true;
     } catch (error) {
       if (generation !== authGeneration) return;
-      authLoading = false;
-      renderConnection();
-      throw error;
+      if (nextSpaceId) sessionStorage.setItem('dong-tien-active-space', nextSpaceId);
+      failAuthStartup(operation, error, generation);
+      return false;
     }
   }
 
@@ -1340,7 +1424,7 @@
       const { data: spaceId, error } = await supabaseClient.rpc('create_family_space', { p_name: $('#familyNameInput').value.trim() });
       if (error) throw error;
       $('#familyNameInput').value = '';
-      await refreshSpaces(spaceId);
+      if (!await refreshSpaces(spaceId)) return;
       sessionStorage.setItem('dong-tien-active-space', spaceId);
       setCloudStatus('Đã tạo không gian gia đình. Mời người thân tham gia để cùng theo dõi chi tiêu.');
     } catch (error) { $('#familyError').textContent = `Không thể tạo không gian: ${error.message}`; $('#familyError').hidden = false; }
@@ -1386,10 +1470,12 @@
       const deletedId = activeSpace.id;
       const { error } = await supabaseClient.rpc('delete_family_space', { p_space_id: deletedId });
       if (error) throw error;
-      await refreshSpaces(spaces.find((space) => space.kind === 'personal' && space.id !== deletedId)?.id);
+      if (!await refreshSpaces(spaces.find((space) => space.kind === 'personal' && space.id !== deletedId)?.id)) return;
       setCloudStatus('Đã xóa không gian gia đình.');
     } catch (error) { $('#familyError').textContent = `Không thể xóa không gian: ${error.message}`; $('#familyError').hidden = false; }
   });
+
+  $('#authGateRetry').addEventListener('click', () => { void checkAuthSession(); });
 
   updateCategories();
   renderAll();
