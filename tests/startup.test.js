@@ -19,12 +19,24 @@ const summaryResult = {
   },
   error: null,
 };
+const comparisonResult = {
+  data: {
+    income_variance: 0, expense_variance: 0, net_variance: 0,
+    income_change_pct: null, expense_change_pct: null,
+    income_change_text: '', expense_change_text: '',
+    savings_rate: null, expense_ratio: null,
+  },
+  error: null,
+};
 
 function never() {
   return new Promise(() => {});
 }
 
-function createHarness({ sessions = [], spaceResults = [], rpcResults = {} } = {}) {
+function createHarness({
+  sessions = [], spaceResults = [], rpcResults = {},
+  summary = summaryResult, comparison = comparisonResult,
+} = {}) {
   const elements = new Map();
   const listeners = new Map();
   const timers = new Map();
@@ -85,7 +97,8 @@ function createHarness({ sessions = [], spaceResults = [], rpcResults = {} } = {
       rpcCallCount += 1;
       rpcCalls.push({ name, args });
       const queue = rpcResults[name] || [];
-      const fallback = name === 'get_space_financial_summary_v2' ? summaryResult : emptyResult;
+      const fallback = name === 'get_space_financial_summary_v2' ? summary
+        : name === 'get_space_financial_summary_comparison' ? comparison : emptyResult;
       return next(queue, fallback, args);
     },
   };
@@ -373,6 +386,118 @@ test('startup error identifies the RPC and migration for PostgreSQL 42883', asyn
   assert.doesNotMatch(message, /Sensitive SQL detail|function format_change_text/);
   assert.match(JSON.stringify(app.warnings), /get_space_financial_summary_comparison/);
   assert.doesNotMatch(JSON.stringify(app.warnings), /Sensitive SQL detail|function format_change_text/);
+});
+
+test('empty and nullable summary fields render safe zeroes or unavailable ratios without NaN', async () => {
+  const app = createHarness({
+    sessions: [Promise.resolve({ data: { session: signedInSession }, error: null })],
+    rpcResults: {
+      get_space_financial_summary_v2: [Promise.resolve({
+        data: {
+          transaction_count: '0',
+          income_count: '0',
+          expense_count: '0',
+          total_income: '0',
+          total_expense: '0',
+          month_income: '0',
+          month_expense: '0',
+          assets_value: '0',
+          cash_value: '0',
+          debts_value: '0',
+          income_expense_ratio: null,
+          savings_rate: null,
+        },
+        error: null,
+      })],
+    },
+    comparison: { data: {}, error: null },
+  });
+  await flushPromises();
+
+  assert.equal(app.elements.get('#appContent').hidden, false);
+  assert.equal(app.elements.get('#savingsRate').textContent, 'Chưa đủ dữ liệu');
+  assert.match(app.elements.get('#reportMetrics').innerHTML, /Chưa đủ dữ liệu/);
+  assert.doesNotMatch(
+    [...app.elements.values()].map(({ textContent, innerHTML }) => `${textContent} ${innerHTML}`).join(' '),
+    /NaN/,
+  );
+});
+
+test('bigint strings across transactions, accounts, and movements render as numbers', async () => {
+  const numericSummary = Object.fromEntries(
+    Object.entries(summaryResult.data).map(([field, value]) => [
+      field,
+      typeof value === 'number' ? String(value) : value,
+    ]),
+  );
+  const app = createHarness({
+    sessions: [Promise.resolve({ data: { session: signedInSession }, error: null })],
+    rpcResults: {
+      list_space_transactions: [
+        { data: [{ id: 'tx-1', type: 'expense', amount: '12000', category: 'Food', date: '2026-11-27T00:00:00Z' }], error: null },
+        emptyResult,
+      ],
+      list_space_assets: [{
+        data: [{
+          id: 'asset-1', name: 'Cash', kind: 'cash', value: '250000',
+          account_type_id: 'type-cash', account_type_label: 'Cash', is_liquid: true,
+        }],
+        error: null,
+      }],
+      list_space_liabilities: [{
+        data: [{
+          id: 'debt-1', name: 'Card', kind: 'card', amount: '0',
+          account_type_id: 'type-card', account_type_label: 'Card',
+        }],
+        error: null,
+      }],
+      list_space_liquid_assets: [{
+        data: [{
+          id: 'asset-1', name: 'Cash', value: '250000',
+          account_type_label: 'Cash', created_at: '2026-11-27T00:00:00Z',
+        }],
+        error: null,
+      }],
+      list_space_balance_movements: [{
+        data: [{
+          id: 'movement-1', account_name: 'Cash', movement_type: 'adjustment',
+          amount: '-500', occurred_at: '2026-11-27T00:00:00Z', note: '',
+        }],
+        error: null,
+      }],
+    },
+    summary: { data: numericSummary, error: null },
+  });
+  await flushPromises();
+
+  assert.equal(app.elements.get('#appContent').hidden, false);
+  assert.match(app.elements.get('#assetList').innerHTML, /250\.000 ₫/);
+  assert.match(app.elements.get('#movementList').innerHTML, /500 ₫/);
+  assert.doesNotMatch(
+    [...app.elements.values()].map(({ textContent, innerHTML }) => `${textContent} ${innerHTML}`).join(' '),
+    /NaN/,
+  );
+});
+
+test('malformed financial summary values fail visibly without rendering NaN or echoing data', async () => {
+  const app = createHarness({
+    sessions: [Promise.resolve({ data: { session: signedInSession }, error: null })],
+    rpcResults: {
+      get_space_financial_summary_v2: [Promise.resolve({
+        data: {
+          ...summaryResult.data,
+          total_income: 'not-a-number private@example.test',
+        },
+        error: null,
+      })],
+    },
+  });
+  await flushPromises();
+
+  const message = app.elements.get('#authGateMessage').textContent;
+  assert.match(message, /total_income/);
+  assert.doesNotMatch(message, /not-a-number|private@example\.test|NaN/);
+  assert.equal(app.elements.get('#authGateRetry').hidden, false);
 });
 
 test('an auth event supersedes a delayed stale getSession result', async () => {

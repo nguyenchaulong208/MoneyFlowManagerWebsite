@@ -42,10 +42,50 @@
     try { return Boolean(localStorage.getItem(STORAGE_KEY)); }
     catch { return false; }
   };
-  const formatMoney = (value) => new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(value) + ' ₫';
-  const compactMoney = (value) => Math.abs(value) >= 1_000_000
-    ? new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(value / 1_000_000) + ' tr'
-    : formatMoney(value);
+  function financialNumber(value, field) {
+    const parsed = typeof value === 'number'
+      ? value
+      : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
+    if (!Number.isFinite(parsed)) {
+      const error = new Error(`Dữ liệu tài chính không hợp lệ tại trường ${field}.`);
+      error.name = 'InvalidFinancialDataError';
+      error.code = 'INVALID_FINANCIAL_DATA';
+      throw error;
+    }
+    return parsed;
+  }
+  function financialArray(value, field) {
+    if (value == null) return [];
+    if (!Array.isArray(value)) {
+      const error = new Error(`Dữ liệu tài chính không hợp lệ tại trường ${field}.`);
+      error.name = 'InvalidFinancialDataError';
+      error.code = 'INVALID_FINANCIAL_DATA';
+      throw error;
+    }
+    return value;
+  }
+  function financialObject(value, field) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      const error = new Error(`Dữ liệu tài chính không hợp lệ tại trường ${field}.`);
+      error.name = 'InvalidFinancialDataError';
+      error.code = 'INVALID_FINANCIAL_DATA';
+      throw error;
+    }
+    return value;
+  }
+  const optionalFinancialNumber = (value, field, fallback = null) =>
+    value == null || value === '' ? fallback : financialNumber(value, field);
+  const formatMoney = (value) => new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 })
+    .format(financialNumber(value, 'số tiền')) + ' ₫';
+  const compactMoney = (value) => {
+    const amount = financialNumber(value, 'số tiền');
+    return Math.abs(amount) >= 1_000_000
+      ? new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(amount / 1_000_000) + ' tr'
+      : formatMoney(amount);
+  };
+  const formatRatio = (value) => value == null
+    ? 'Chưa đủ dữ liệu'
+    : `${(financialNumber(value, 'tỷ lệ') * 100).toFixed(1)}%`;
   const makeId = () => Date.now() + '-' + Math.random().toString(36).slice(2, 9);
   const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;' }[char]));
   const hasCloudSession = () => Boolean(supabaseClient && activeUser && activeSpace);
@@ -150,8 +190,8 @@
     $('#monthIncome').textContent = compactMoney(data.summary.month_income);
     $('#monthExpense').textContent = compactMoney(data.summary.month_expense);
     $('#monthNet').textContent = (data.summary.month_net_cash_flow >= 0 ? '+' : '−') + formatMoney(Math.abs(data.summary.month_net_cash_flow));
-    $('#savingsRate').textContent = data.summary.savings_rate == null ? '—' : `${(Number(data.summary.savings_rate) * 100).toFixed(1)}%`;
-    const savings = Number(data.summary.savings_rate || 0);
+    $('#savingsRate').textContent = formatRatio(data.summary.savings_rate);
+    const savings = data.summary.savings_rate ?? 0;
     $('#savingsBar').style.width = savings > 0 ? Math.max(savings * 100, savings ? 4 : 0) + '%' : '0';
     $('#recentTransactions').innerHTML = data.recentTransactions.length ? data.recentTransactions.slice(0, 4).map((item) => transactionRow(item, false)).join('') : empty('Bắt đầu ghi dòng tiền', 'Giao dịch đầu tiên sẽ xuất hiện ở đây. Dữ liệu được lưu riêng cho bạn.');
   }
@@ -184,7 +224,7 @@
     $('#movementList').innerHTML = data.movements.length ? data.movements.map((movement) => {
       const date = new Date(movement.occurred_at).toLocaleDateString('vi-VN', { day: 'numeric', month: 'short' });
       const labels = { opening:'Số dư ban đầu', adjustment:'Điều chỉnh', purchase:'Mua tài sản', transfer:'Chuyển khoản', borrowing:'Vay mới', repayment:'Trả nợ', transaction:'Giao dịch', transaction_reversal:'Đảo giao dịch', restore_adjustment:'Điều chỉnh khôi phục' };
-      return `<div class="item-row movement-row"><span class="item-icon">↕</span><span class="item-main"><b>${escapeHtml(movement.account_name)}</b><small>${escapeHtml(labels[movement.movement_type] || movement.movement_type)} · ${escapeHtml(date)}${movement.note ? ' · ' + escapeHtml(movement.note) : ''}</small></span><span class="item-amount ${Number(movement.amount) < 0 ? 'negative' : ''}">${Number(movement.amount) >= 0 ? '+' : '−'}${formatMoney(Math.abs(Number(movement.amount)))}</span></div>`;
+      return `<div class="item-row movement-row"><span class="item-icon">↕</span><span class="item-main"><b>${escapeHtml(movement.account_name)}</b><small>${escapeHtml(labels[movement.movement_type] || movement.movement_type)} · ${escapeHtml(date)}${movement.note ? ' · ' + escapeHtml(movement.note) : ''}</small></span><span class="item-amount ${movement.amount < 0 ? 'negative' : ''}">${movement.amount >= 0 ? '+' : '−'}${formatMoney(Math.abs(movement.amount))}</span></div>`;
     }).join('') : empty('Chưa có biến động số dư', 'Các khoản điều chỉnh, chuyển khoản và giao dịch liên kết sẽ được lưu tại đây.');
     $('#loadMoreMovements').hidden = !data.hasMoreMovements;
   }
@@ -195,7 +235,7 @@
     const income = data.summary.month_income;
     const expense = data.summary.month_expense;
     const netCashFlow = data.summary.month_net_cash_flow;
-    const categories = data.summary.month_categories.map((item) => [item.category, Number(item.amount)]);
+    const categories = data.summary.month_categories.map((item) => [item.category, item.amount]);
     const month = new Intl.DateTimeFormat('vi-VN', { month:'long', year:'numeric' }).format(now);
     const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toLocaleDateString('vi-VN', { month:'long', year:'numeric' });
     const largest = categories[0]?.[0] || '—';
@@ -270,14 +310,14 @@
       ['THU NHẬP TRONG KỲ', formatMoney(income), 'Tổng giao dịch thu trong kỳ báo cáo.'],
       ['CHI TIÊU TRONG KỲ', formatMoney(expense), 'Tổng giao dịch chi trong kỳ báo cáo.'],
       ['DÒNG TIỀN RÒNG', (netCashFlow >= 0 ? '+' : '−') + formatMoney(Math.abs(netCashFlow)), 'Thu nhập trong kỳ trừ chi tiêu trong kỳ.'],
-      ['TỶ LỆ CHI / THU', ratio == null ? '—' : `${(Number(ratio) * 100).toFixed(1)}%`, 'Chi tiêu trong kỳ ÷ thu nhập trong kỳ; — khi chưa có thu nhập.'],
-      ['TỶ LỆ TIẾT KIỆM', savings == null ? '—' : `${(Number(savings) * 100).toFixed(1)}%`, 'Dòng tiền ròng trong kỳ ÷ thu nhập trong kỳ; — khi chưa có thu nhập.'],
+      ['TỶ LỆ CHI / THU', formatRatio(ratio), 'Chi tiêu trong kỳ ÷ thu nhập trong kỳ; chưa đủ dữ liệu khi chưa có thu nhập.'],
+      ['TỶ LỆ TIẾT KIỆM', formatRatio(savings), 'Dòng tiền ròng trong kỳ ÷ thu nhập trong kỳ; chưa đủ dữ liệu khi chưa có thu nhập.'],
       ['TRẢ NỢ TRONG KỲ', formatMoney(data.summary.monthly_debt_repayments), 'Tổng các khoản trả nợ được ghi nhận trong kỳ.'],
       ['VAY MỚI TRONG KỲ', formatMoney(data.summary.monthly_borrowing), 'Tổng các khoản vay mới được ghi nhận trong kỳ.'],
       ['MUA TÀI SẢN TRONG KỲ', formatMoney(data.summary.monthly_asset_purchases), 'Tổng giá trị mua tài sản được ghi nhận trong kỳ.'],
     ];
     $('#reportMetrics').innerHTML = metrics.map(([label, value, formula]) => `<article class="metric-card"><small>${label}</small><b>${value}</b><span>${formula}</span></article>`).join('');
-    const renderBreakdown = (items) => items.length ? items.map((item) => `<div class="category-row"><div class="category-head"><b>${escapeHtml(item.type)}</b><b>${formatMoney(Number(item.amount))}</b></div></div>`).join('') : '<p class="hint">Chưa có dữ liệu.</p>';
+    const renderBreakdown = (items) => items.length ? items.map((item) => `<div class="category-row"><div class="category-head"><b>${escapeHtml(item.type)}</b><b>${formatMoney(item.amount)}</b></div></div>`).join('') : '<p class="hint">Chưa có dữ liệu.</p>';
     $('#assetsByType').innerHTML = renderBreakdown(data.summary.assets_by_type);
     $('#liabilitiesByType').innerHTML = renderBreakdown(data.summary.liabilities_by_type);
     const totalExpense = categories.reduce((sum, [,amount]) => sum + amount, 0);
@@ -458,6 +498,9 @@
       ? ' Máy chủ phản hồi quá lâu.'
       : ' Kiểm tra kết nối, cấu hình Supabase và các migration.';
     const code = startupErrorCode(error);
+    if (error?.name === 'InvalidFinancialDataError') {
+      return `${messages[operation] || 'Không thể khởi động ứng dụng.'} ${error.message} Vui lòng tải lại; dữ liệu gốc chưa bị thay đổi.`;
+    }
     const rpcName = error?.rpcName;
     const knownRpc = typeof rpcName === 'string' && /^[a-z][a-z0-9_]{0,62}$/.test(rpcName);
     if (error?.code === 'PGRST202' && knownRpc) {
@@ -618,7 +661,7 @@
   function normalizeTransaction(item) {
     return {
       ...item,
-      amount: Number(item.amount),
+      amount: financialNumber(item.amount, 'giao dịch.amount'),
       note: item.note || '',
       linkedAssetId: item.linked_asset_id || null,
       linkedDebtId: item.linked_debt_id || null,
@@ -687,8 +730,8 @@
     if (error) throw error;
     const hasMore = result.length > limit;
     const items = result.slice(0, limit).map((item) => isAsset
-      ? { ...item, value: Number(item.value), accountTypeId: item.account_type_id, account_type_label: item.account_type_label, is_liquid: item.is_liquid }
-      : { ...item, amount: Number(item.amount), dueDate: item.due_date || null, accountTypeId: item.account_type_id, account_type_label: item.account_type_label });
+      ? { ...item, value: financialNumber(item.value, 'tài sản.value'), accountTypeId: item.account_type_id, account_type_label: item.account_type_label, is_liquid: item.is_liquid }
+      : { ...item, amount: financialNumber(item.amount, 'khoản nợ.amount'), dueDate: item.due_date || null, accountTypeId: item.account_type_id, account_type_label: item.account_type_label });
     const last = items[items.length - 1];
     return { items, hasMore, cursor: hasMore && last ? { createdAt: last.created_at, id: last.id } : null };
   }
@@ -702,7 +745,7 @@
     });
     if (error) throw error;
     const hasMore = result.length > limit;
-    const items = result.slice(0, limit).map((item) => ({ ...item, value: Number(item.value) }));
+    const items = result.slice(0, limit).map((item) => ({ ...item, value: financialNumber(item.value, 'tài sản thanh khoản.value') }));
     const last = items[items.length - 1];
     return { items, hasMore, cursor: hasMore && last ? { createdAt: last.created_at, id: last.id } : null };
   }
@@ -742,7 +785,7 @@
     });
     if (error) throw error;
     const hasMore = result.length > limit;
-    const movements = result.slice(0, limit).map((item) => ({ ...item, amount: Number(item.amount) }));
+    const movements = result.slice(0, limit).map((item) => ({ ...item, amount: financialNumber(item.amount, 'biến động.amount') }));
     const last = movements[movements.length - 1];
     return { movements, hasMore, cursor: hasMore && last ? { createdAt: last.created_at, id: last.id } : null };
   }
@@ -781,7 +824,42 @@
     for (const result of results) {
       if (result?.error) throw result.error;
     }
-    const cmp = comparison.data || {};
+    const totals = financialObject(summaryV2.data, 'summary');
+    const cmp = comparison.data == null ? {} : financialObject(comparison.data, 'comparison');
+    const monthIncome = financialNumber(totals.month_income, 'month_income');
+    const monthExpense = financialNumber(totals.month_expense, 'month_expense');
+    const assetsValue = financialNumber(totals.assets_value, 'assets_value');
+    const debtsValue = financialNumber(totals.debts_value ?? totals.liabilities_value, 'debts_value');
+    const cashValue = optionalFinancialNumber(totals.cash_value ?? totals.liquid_assets_value, 'cash_value', 0);
+    const assetsByType = financialArray(totals.assets_by_type, 'assets_by_type').map((item, index) => {
+      const value = financialObject(item, `assets_by_type[${index}]`);
+      return { ...value, amount: financialNumber(value.amount, `assets_by_type[${index}].amount`) };
+    });
+    const liabilitiesByType = financialArray(totals.liabilities_by_type, 'liabilities_by_type').map((item, index) => {
+      const value = financialObject(item, `liabilities_by_type[${index}]`);
+      return { ...value, amount: financialNumber(value.amount, `liabilities_by_type[${index}].amount`) };
+    });
+    const monthCategories = financialArray(totals.month_categories, 'month_categories').map((item, index) => {
+      const value = financialObject(item, `month_categories[${index}]`);
+      return { ...value, amount: financialNumber(value.amount, `month_categories[${index}].amount`) };
+    });
+    const optionalText = (value, field) => {
+      if (value == null || value === '') return '';
+      if (typeof value !== 'string') {
+        const error = new Error(`Dữ liệu tài chính không hợp lệ tại trường ${field}.`);
+        error.name = 'InvalidFinancialDataError';
+        error.code = 'INVALID_FINANCIAL_DATA';
+        throw error;
+      }
+      return value;
+    };
+    const monthNetCashFlow = optionalFinancialNumber(
+      totals.month_net_cash_flow,
+      'month_net_cash_flow',
+      monthIncome - monthExpense,
+    );
+    const netWorth = optionalFinancialNumber(totals.net_worth, 'net_worth', assetsValue - debtsValue);
+    const liquidAssetsValue = optionalFinancialNumber(totals.liquid_assets_value, 'liquid_assets_value', cashValue);
     return {
       transactions: transactionPage.transactions,
       recentTransactions: recentPage.transactions,
@@ -792,39 +870,43 @@
       financeTypes: financeTypes.data || [],
       movements: movements.movements,
       summary: {
-        transaction_count: Number(totals.transaction_count),
-        income_count: Number(totals.income_count),
-        expense_count: Number(totals.expense_count),
-        total_income: Number(totals.total_income),
-        total_expense: Number(totals.total_expense),
-        month_income: Number(totals.month_income),
-        month_expense: Number(totals.month_expense),
-        month_net_cash_flow: Number(totals.month_net_cash_flow ?? Number(totals.month_income) - Number(totals.month_expense)),
-        assets_value: Number(totals.assets_value),
-        cash_value: Number(totals.cash_value),
-        liquid_assets_value: Number(totals.liquid_assets_value ?? totals.cash_value),
-        debts_value: Number(totals.debts_value ?? totals.liabilities_value),
-        liabilities_value: Number(totals.liabilities_value ?? totals.debts_value),
-        net_worth: Number(totals.net_worth),
-        income_expense_ratio: totals.income_expense_ratio == null ? null : Number(totals.income_expense_ratio),
-        savings_rate: totals.savings_rate == null ? null : Number(totals.savings_rate),
-        monthly_debt_repayments: Number(totals.monthly_debt_repayments ?? totals.month_debt_repayments ?? 0),
-        monthly_borrowing: Number(totals.monthly_borrowing || 0),
-        monthly_asset_purchases: Number(totals.monthly_asset_purchases || 0),
-        assets_by_type: (totals.assets_by_type || []).map((item) => ({ ...item, amount: Number(item.amount) })),
-        liabilities_by_type: (totals.liabilities_by_type || []).map((item) => ({ ...item, amount: Number(item.amount) })),
-        month_categories: totals.month_categories || [],
+        transaction_count: financialNumber(totals.transaction_count, 'transaction_count'),
+        income_count: financialNumber(totals.income_count, 'income_count'),
+        expense_count: financialNumber(totals.expense_count, 'expense_count'),
+        total_income: financialNumber(totals.total_income, 'total_income'),
+        total_expense: financialNumber(totals.total_expense, 'total_expense'),
+        month_income: monthIncome,
+        month_expense: monthExpense,
+        month_net_cash_flow: monthNetCashFlow,
+        assets_value: assetsValue,
+        cash_value: cashValue,
+        liquid_assets_value: liquidAssetsValue,
+        debts_value: debtsValue,
+        liabilities_value: optionalFinancialNumber(totals.liabilities_value, 'liabilities_value', debtsValue),
+        net_worth: netWorth,
+        income_expense_ratio: optionalFinancialNumber(totals.income_expense_ratio, 'income_expense_ratio'),
+        savings_rate: optionalFinancialNumber(totals.savings_rate, 'savings_rate'),
+        monthly_debt_repayments: optionalFinancialNumber(
+          totals.monthly_debt_repayments ?? totals.month_debt_repayments,
+          'monthly_debt_repayments',
+          0,
+        ),
+        monthly_borrowing: optionalFinancialNumber(totals.monthly_borrowing, 'monthly_borrowing', 0),
+        monthly_asset_purchases: optionalFinancialNumber(totals.monthly_asset_purchases, 'monthly_asset_purchases', 0),
+        assets_by_type: assetsByType,
+        liabilities_by_type: liabilitiesByType,
+        month_categories: monthCategories,
       },
       comparison: {
-        income_variance: Number(cmp.income_variance || 0),
-        expense_variance: Number(cmp.expense_variance || 0),
-        net_variance: Number(cmp.net_variance || 0),
-        income_change_pct: cmp.income_change_pct == null ? null : Number(cmp.income_change_pct),
-        expense_change_pct: cmp.expense_change_pct == null ? null : Number(cmp.expense_change_pct),
-        income_change_text: cmp.income_change_text || '',
-        expense_change_text: cmp.expense_change_text || '',
-        savings_rate: cmp.savings_rate == null ? null : Number(cmp.savings_rate),
-        expense_ratio: cmp.expense_ratio == null ? null : Number(cmp.expense_ratio),
+        income_variance: optionalFinancialNumber(cmp.income_variance, 'comparison.income_variance', 0),
+        expense_variance: optionalFinancialNumber(cmp.expense_variance, 'comparison.expense_variance', 0),
+        net_variance: optionalFinancialNumber(cmp.net_variance, 'comparison.net_variance', 0),
+        income_change_pct: optionalFinancialNumber(cmp.income_change_pct, 'comparison.income_change_pct'),
+        expense_change_pct: optionalFinancialNumber(cmp.expense_change_pct, 'comparison.expense_change_pct'),
+        income_change_text: optionalText(cmp.income_change_text, 'comparison.income_change_text'),
+        expense_change_text: optionalText(cmp.expense_change_text, 'comparison.expense_change_text'),
+        savings_rate: optionalFinancialNumber(cmp.savings_rate, 'comparison.savings_rate'),
+        expense_ratio: optionalFinancialNumber(cmp.expense_ratio, 'comparison.expense_ratio'),
       },
       hasMoreTransactions: transactionPage.hasMore,
       transactionCursor: transactionPage.cursor,
@@ -1478,8 +1560,17 @@
           fetchLiquidAssetPage(activeSpace.id, null),
         ]);
         if (summary.error) throw summary.error;
-        data.summary.cash_value = Number(summary.data.cash_value);
-        data.summary.liquid_assets_value = Number(summary.data.liquid_assets_value ?? summary.data.cash_value);
+        const totals = financialObject(summary.data, 'liquidity_summary');
+        data.summary.cash_value = optionalFinancialNumber(
+          totals.cash_value ?? totals.liquid_assets_value,
+          'cash_value',
+          0,
+        );
+        data.summary.liquid_assets_value = optionalFinancialNumber(
+          totals.liquid_assets_value,
+          'liquid_assets_value',
+          data.summary.cash_value,
+        );
         data.liquidAssets = liquidAssets.items;
         data.hasMoreLiquidAssets = liquidAssets.hasMore;
         data.liquidAssetCursor = liquidAssets.cursor;
