@@ -30,6 +30,8 @@ function createHarness({ sessions = [], spaceResults = [], rpcResults = {} } = {
   const timers = new Map();
   const warnings = [];
   const sessionValues = new Map();
+  const rpcCalls = [];
+  const tableCalls = [];
   let nextTimerId = 0;
   let authListener = null;
   let spaceQueryCount = 0;
@@ -46,10 +48,10 @@ function createHarness({ sessions = [], spaceResults = [], rpcResults = {} } = {
     }
     return elements.get(selector);
   };
-  const next = (queue, fallback) => {
+  const next = (queue, fallback, ...args) => {
     if (!queue.length) return fallback;
     const item = queue.shift();
-    return typeof item === 'function' ? item() : item;
+    return typeof item === 'function' ? item(...args) : item;
   };
 
   const client = {
@@ -60,6 +62,7 @@ function createHarness({ sessions = [], spaceResults = [], rpcResults = {} } = {
       },
     },
     from(table) {
+      tableCalls.push(table);
       if (table === 'spaces') spaceQueryCount += 1;
       const builder = {
         select() { return this; },
@@ -78,11 +81,12 @@ function createHarness({ sessions = [], spaceResults = [], rpcResults = {} } = {
       };
       return builder;
     },
-    rpc(name) {
+    rpc(name, args) {
       rpcCallCount += 1;
+      rpcCalls.push({ name, args });
       const queue = rpcResults[name] || [];
       const fallback = name === 'get_space_financial_summary_v2' ? summaryResult : emptyResult;
-      return next(queue, fallback);
+      return next(queue, fallback, args);
     },
   };
 
@@ -124,6 +128,8 @@ function createHarness({ sessions = [], spaceResults = [], rpcResults = {} } = {
     warnings,
     get spaceQueryCount() { return spaceQueryCount; },
     get rpcCallCount() { return rpcCallCount; },
+    rpcCalls,
+    tableCalls,
     click(selector) {
       const handler = listeners.get(`${selector}:click`);
       assert.ok(handler, `no click handler registered for ${selector}`);
@@ -318,4 +324,37 @@ test('an auth event supersedes a delayed stale getSession result', async () => {
 
   assert.equal(app.elements.get('#authGateTitle').textContent, 'Đăng nhập để mở tài chính');
   assert.equal(app.spaceQueryCount, 0);
+});
+
+test('startup reads bounded pages from a 100,000-transaction mock instead of loading the table', async () => {
+  const recordCount = 100000;
+  const records = Array.from({ length: recordCount }, (_, index) => ({
+    id: `tx-${String(recordCount - index).padStart(6, '0')}`,
+    type: 'expense',
+    amount: 125,
+    category: 'Food',
+    note: '',
+    date: '2026-06-15T12:00:00.000Z',
+  }));
+  let returnedRows = 0;
+  const pageFromMock = (args) => {
+    const page = records.slice(0, args.p_limit);
+    returnedRows += page.length;
+    return { data: page, error: null };
+  };
+  const app = createHarness({
+    sessions: [Promise.resolve({ data: { session: signedInSession }, error: null })],
+    rpcResults: {
+      list_space_transactions: [pageFromMock, pageFromMock],
+    },
+  });
+
+  await flushPromises();
+
+  const transactionCalls = app.rpcCalls.filter(({ name }) => name === 'list_space_transactions');
+  assert.deepEqual(transactionCalls.map(({ args }) => args.p_limit), [51, 5]);
+  assert.equal(returnedRows, 56);
+  assert.ok(returnedRows < recordCount);
+  assert.equal(app.tableCalls.includes('transactions'), false);
+  assert.equal(app.elements.get('#appContent').hidden, false);
 });

@@ -9,5 +9,8 @@
     "build": "node scripts/build.js",
     "check": "node --check app.js && node --check scripts/build.js",
     "test": "node --test"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.6.0"
   }
 }
