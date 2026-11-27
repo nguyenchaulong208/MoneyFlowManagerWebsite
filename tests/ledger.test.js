@@ -6,8 +6,10 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const migration = read('supabase/migrations/20261127000000_financial_ledger_reporting.sql');
+const movementMigration = read('supabase/migrations/20261127010000_account_movement_ledger.sql');
 const app = read('app.js');
 const html = read('index.html');
+const readme = read('README.md');
 
 test('ledger migration is additive and preserves legacy transaction identity and labels', () => {
   assert.match(migration, /add column if not exists linked_asset_id text/i);
@@ -56,4 +58,68 @@ test('restore subtracts linked effects before replaying them', () => {
   assert.match(migration, /amount'\)::bigint - coalesce\([\s\S]*?linked_debt_id/i);
   assert.match(migration, /linked_asset_id, linked_debt_id, balance_effect/i);
   assert.match(app, /transactions:await fetchAllTransactions\(activeSpace\.id\)/);
+});
+
+test('durable movements are space-scoped, append-only, and reverse transaction effects', () => {
+  assert.match(movementMigration, /create table if not exists public\.account_movements/i);
+  assert.match(movementMigration, /enable row level security/i);
+  assert.match(movementMigration, /Members can view account movements/i);
+  assert.match(movementMigration, /revoke insert, update, delete on public\.space_finance_types, public\.account_movements/i);
+  assert.match(movementMigration, /movement_type in \([\s\S]*?'opening'[\s\S]*?'transaction_reversal'/i);
+  assert.match(movementMigration, /transaction_reversal', old\.id, 1/i);
+  assert.match(movementMigration, /transaction_reversal', old\.id, 2/i);
+  assert.match(movementMigration, /apply_account_movement/i);
+});
+
+test('two-leg transfers, purchases, repayments, and borrowing preserve balance semantics', () => {
+  assert.match(movementMigration, /source_delta := -p_amount;\s+destination_delta := p_amount/i);
+  assert.match(movementMigration, /source_delta := -p_amount;\s+destination_delta := -p_amount/i);
+  assert.match(movementMigration, /source_delta := p_amount;\s+destination_delta := p_amount/i);
+  assert.match(movementMigration, /balance_movement_type in \('purchase', 'transfer'\)[\s\S]*?balance_effect = 'increase'[\s\S]*?balance_effect_2 = 'decrease'/i);
+  assert.match(movementMigration, /monthly_debt_repayments/i);
+  assert.match(movementMigration, /source_transaction_id is null/i);
+  assert.match(movementMigration, /linked_debt_id_2 is not null[\s\S]*?balance_movement_type_2 = 'repayment'/i);
+});
+
+test('finance types and liquid assets drive server-side balances and reports', () => {
+  assert.match(movementMigration, /create table if not exists public\.space_finance_types/i);
+  assert.match(movementMigration, /is_liquid boolean not null default false/i);
+  assert.match(movementMigration, /create or replace function public\.create_space_finance_type/i);
+  assert.match(movementMigration, /set_space_finance_type_liquidity/i);
+  assert.match(movementMigration, /'liquid_assets_value'/i);
+  assert.match(movementMigration, /'assets_by_type'/i);
+  assert.match(movementMigration, /'liabilities_by_type'/i);
+  assert.match(movementMigration, /'income_expense_ratio'/i);
+  assert.match(movementMigration, /'savings_rate'/i);
+  assert.match(app, /rpc\('create_space_finance_type'/);
+  assert.match(app, /rpc\('set_space_finance_type_liquidity'/);
+  assert.match(html, /id="financeTypeManager"/);
+});
+
+test('account and movement history reads are bounded and keyset-paginated', () => {
+  assert.match(movementMigration, /public\.list_space_assets/i);
+  assert.match(movementMigration, /public\.list_space_liabilities/i);
+  assert.match(movementMigration, /public\.list_space_balance_movements/i);
+  assert.match(movementMigration, /\(item\.created_at, item\.id\) < \(p_before_created_at, p_before_id\)/i);
+  assert.match(movementMigration, /limit p_limit/i);
+  assert.match(movementMigration, /search requires at least two characters/i);
+  assert.match(movementMigration, /p_limit not between 1 and 25/i);
+  assert.doesNotMatch(app, /from\('assets'\)\.select/);
+  assert.doesNotMatch(app, /from\('debts'\)\.select/);
+  assert.match(app, /fetchAllAccounts\(activeSpace\.id, 'asset', true\)/);
+  assert.match(app, /fetchAllMovements\(activeSpace\.id\)/);
+  assert.match(html, /id="loadMoreAssets"/);
+  assert.match(html, /id="loadMoreDebts"/);
+  assert.match(html, /id="loadMoreMovements"/);
+});
+
+test('restore preserves archived accounts and imported movement history without replaying it', () => {
+  assert.match(movementMigration, /p_movements jsonb/i);
+  assert.match(movementMigration, /app\.import_movement_history/i);
+  assert.match(movementMigration, /app\.skip_transaction_movement/i);
+  assert.match(movementMigration, /on conflict do nothing/i);
+  assert.match(movementMigration, /p_include_archived boolean default false/i);
+  assert.match(app, /p_movements: replacement\.movements \|\| \[\]/);
+  assert.match(app, /dong-tien-backup-v2/);
+  assert.match(readme, /bản sao lưu v2 bao gồm/i);
 });

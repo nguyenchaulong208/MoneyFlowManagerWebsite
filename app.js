@@ -3,11 +3,16 @@
   const emptySummary = () => ({
     transaction_count: 0, income_count: 0, expense_count: 0,
     total_income: 0, total_expense: 0, month_income: 0, month_expense: 0,
-    assets_value: 0, cash_value: 0, debts_value: 0, month_categories: [],
+    assets_value: 0, cash_value: 0, debts_value: 0, liabilities_value: 0,
+    net_worth: 0, income_expense_ratio: null, savings_rate: null,
+    monthly_debt_repayments: 0, monthly_borrowing: 0, monthly_asset_purchases: 0,
+    assets_by_type: [], liabilities_by_type: [], month_categories: [],
   });
   const emptyData = () => ({
-    transactions: [], recentTransactions: [], assets: [], debts: [], categories: [],
+    transactions: [], recentTransactions: [], assets: [], debts: [], categories: [], financeTypes: [], movements: [],
     summary: emptySummary(), hasMoreTransactions: false, transactionCursor: null,
+    hasMoreAssets: false, assetCursor: null, hasMoreDebts: false, debtCursor: null,
+    hasMoreMovements: false, movementCursor: null,
   });
   let data = emptyData();
   let filter = 'all';
@@ -53,12 +58,20 @@
 
   function validateData(value) {
     if (!value || typeof value !== 'object' || !Array.isArray(value.transactions) || !Array.isArray(value.assets) || !Array.isArray(value.debts)) throw new Error('Dữ liệu sao lưu không đúng định dạng.');
+    if (value.movements !== undefined && !Array.isArray(value.movements)) throw new Error('Lịch sử biến động trong tệp sao lưu không hợp lệ.');
     value.transactions.forEach((item) => {
       if (!item.id || !['income','expense'].includes(item.type) || typeof item.amount !== 'number' || !Number.isFinite(item.amount) || item.amount <= 0 || !item.category || !Number.isFinite(Date.parse(item.date))) throw new Error('Giao dịch trong tệp sao lưu không hợp lệ.');
       const linkedAssetId = item.linkedAssetId || item.linked_asset_id;
       const linkedDebtId = item.linkedDebtId || item.linked_debt_id;
       const balanceEffect = item.balanceEffect || item.balance_effect;
-      if ((linkedAssetId && linkedDebtId) || ((linkedAssetId || linkedDebtId) && !['increase', 'decrease'].includes(balanceEffect))) {
+      const linkedAssetId2 = item.linkedAssetId2 || item.linked_asset_id_2;
+      const linkedDebtId2 = item.linkedDebtId2 || item.linked_debt_id_2;
+      const balanceEffect2 = item.balanceEffect2 || item.balance_effect_2;
+      if ((linkedAssetId && linkedDebtId) || (linkedAssetId2 && linkedDebtId2)
+        || ((linkedAssetId || linkedDebtId) && !['increase', 'decrease'].includes(balanceEffect))
+        || ((linkedAssetId2 || linkedDebtId2) && !['increase', 'decrease'].includes(balanceEffect2))
+        || (linkedAssetId && linkedAssetId === linkedAssetId2)
+        || (linkedDebtId && linkedDebtId === linkedDebtId2)) {
         throw new Error('Liên kết số dư trong tệp sao lưu không hợp lệ.');
       }
     });
@@ -67,6 +80,14 @@
     });
     value.debts.forEach((item) => {
       if (!item.id || typeof item.name !== 'string' || typeof item.amount !== 'number' || !Number.isFinite(item.amount) || item.amount < 0) throw new Error('Khoản nợ trong tệp sao lưu không hợp lệ.');
+    });
+    (value.movements || []).forEach((item) => {
+      if (!item.id || !['asset', 'liability'].includes(item.account_kind) || !item.account_id
+        || !Number.isSafeInteger(Number(item.amount))
+        || !['opening', 'adjustment', 'purchase', 'transfer', 'borrowing', 'repayment', 'transaction', 'transaction_reversal', 'restore_adjustment'].includes(item.movement_type)
+        || !Number.isFinite(Date.parse(item.occurred_at)) || !Number.isFinite(Date.parse(item.created_at))) {
+        throw new Error('Biến động số dư trong tệp sao lưu không hợp lệ.');
+      }
     });
   }
 
@@ -86,9 +107,12 @@
     const date = new Date(item.date).toLocaleDateString('vi-VN', { day: 'numeric', month: 'short' });
     const linkedAsset = item.linkedAssetId && data.assets.find((asset) => asset.id === item.linkedAssetId);
     const linkedDebt = item.linkedDebtId && data.debts.find((debt) => debt.id === item.linkedDebtId);
-    const linkedName = linkedAsset?.name || linkedDebt?.name;
+    const linkedName = linkedAsset?.name || linkedDebt?.name || item.linkedAssetName || item.linkedDebtName;
+    const linkedName2 = item.linkedAssetId2
+      ? data.assets.find((asset) => asset.id === item.linkedAssetId2)?.name || item.linkedAssetName2
+      : item.linkedDebtId2 ? data.debts.find((debt) => debt.id === item.linkedDebtId2)?.name || item.linkedDebtName2 : '';
     return `<div class="transaction-row ${positive ? 'income' : ''}">
-      <span class="icon">${positive ? '↗' : '◈'}</span><span class="transaction-main"><b>${escapeHtml(item.note || item.category)}</b><small>${escapeHtml(item.category)} · ${escapeHtml(date)}${linkedName ? ' · ↔ ' + escapeHtml(linkedName) : ''}</small></span>
+      <span class="icon">${positive ? '↗' : '◈'}</span><span class="transaction-main"><b>${escapeHtml(item.note || item.category)}</b><small>${escapeHtml(item.category)} · ${escapeHtml(date)}${linkedName ? ' · ↔ ' + escapeHtml(linkedName) : ''}${linkedName2 ? ' · ↔ ' + escapeHtml(linkedName2) : ''}</small></span>
       <span class="transaction-amount ${positive ? 'income' : ''}">${positive ? '+' : '−'}${formatMoney(item.amount)}</span>
       ${deletable ? `<span class="row-actions"><button type="button" data-edit-kind="transaction" data-edit-id="${escapeHtml(item.id)}" aria-label="Sửa giao dịch">Sửa</button><button type="button" data-delete-transaction="${escapeHtml(item.id)}" aria-label="Xóa giao dịch">×</button></span>` : ''}</div>`;
   }
@@ -131,9 +155,16 @@
     $('#assetNetValue').textContent = formatMoney(t.assetsValue - t.debtsValue);
     $('#assetTotal').textContent = compactMoney(t.assetsValue);
     $('#debtTotal').textContent = compactMoney(t.debtsValue);
-    const kindNames = { cash:'Tiền mặt & tiền gửi', investment:'Đầu tư', property:'Bất động sản', business:'Kinh doanh', other:'Tài sản khác' };
-    $('#assetList').innerHTML = data.assets.length ? data.assets.map((asset) => `<div class="item-row"><span class="item-icon">▤</span><span class="item-main"><b>${escapeHtml(asset.name)}</b><small>${escapeHtml(kindNames[asset.kind] || 'Tài sản khác')}</small></span><span class="item-amount">${formatMoney(asset.value)}</span><span class="row-actions"><button type="button" data-edit-kind="asset" data-edit-id="${escapeHtml(asset.id)}">Sửa</button><button type="button" data-delete-asset="${escapeHtml(asset.id)}" aria-label="Xóa tài sản">×</button></span></div>`).join('') : empty('Chưa có tài sản', 'Thêm tiền mặt, khoản tiết kiệm, khoản đầu tư hoặc tài sản khác.');
-    $('#debtList').innerHTML = data.debts.length ? data.debts.map((debt) => `<div class="item-row debt"><span class="item-icon">▤</span><span class="item-main"><b>${escapeHtml(debt.name)}</b><small>${escapeHtml(debt.kind)}${debt.dueDate ? ' · Hạn ' + escapeHtml(debt.dueDate) : ''}</small></span><span class="item-amount">${formatMoney(debt.amount)}</span><span class="row-actions"><button type="button" data-edit-kind="debt" data-edit-id="${escapeHtml(debt.id)}">Sửa</button><button type="button" data-delete-debt="${escapeHtml(debt.id)}" aria-label="Xóa khoản nợ">×</button></span></div>`).join('') : empty('Chưa có khoản nợ', 'Theo dõi dư nợ thẻ tín dụng, vay hoặc trả góp tại đây.');
+    $('#assetList').innerHTML = data.assets.length ? data.assets.map((asset) => `<div class="item-row"><span class="item-icon">▤</span><span class="item-main"><b>${escapeHtml(asset.name)}</b><small>${escapeHtml(asset.account_type_label || asset.kind)}${asset.is_liquid ? ' · Thanh khoản' : ''}</small></span><span class="item-amount">${formatMoney(asset.value)}</span><span class="row-actions"><button type="button" data-edit-kind="asset" data-edit-id="${escapeHtml(asset.id)}">Sửa</button><button type="button" data-delete-asset="${escapeHtml(asset.id)}" aria-label="Lưu trữ tài sản">Lưu trữ</button></span></div>`).join('') : empty('Chưa có tài sản', 'Thêm tiền mặt, khoản tiết kiệm, khoản đầu tư hoặc tài sản khác.');
+    $('#debtList').innerHTML = data.debts.length ? data.debts.map((debt) => `<div class="item-row debt"><span class="item-icon">▤</span><span class="item-main"><b>${escapeHtml(debt.name)}</b><small>${escapeHtml(debt.account_type_label || debt.kind)}${debt.dueDate ? ' · Hạn ' + escapeHtml(debt.dueDate) : ''}</small></span><span class="item-amount">${formatMoney(debt.amount)}</span><span class="row-actions"><button type="button" data-edit-kind="debt" data-edit-id="${escapeHtml(debt.id)}">Sửa</button><button type="button" data-delete-debt="${escapeHtml(debt.id)}" aria-label="Lưu trữ khoản phải trả">Lưu trữ</button></span></div>`).join('') : empty('Chưa có khoản nợ', 'Theo dõi dư nợ thẻ tín dụng, vay hoặc trả góp tại đây.');
+    $('#loadMoreAssets').hidden = !data.hasMoreAssets;
+    $('#loadMoreDebts').hidden = !data.hasMoreDebts;
+    $('#movementList').innerHTML = data.movements.length ? data.movements.map((movement) => {
+      const date = new Date(movement.occurred_at).toLocaleDateString('vi-VN', { day: 'numeric', month: 'short' });
+      const labels = { opening:'Số dư ban đầu', adjustment:'Điều chỉnh', purchase:'Mua tài sản', transfer:'Chuyển khoản', borrowing:'Vay mới', repayment:'Trả nợ', transaction:'Giao dịch', transaction_reversal:'Đảo giao dịch', restore_adjustment:'Điều chỉnh khôi phục' };
+      return `<div class="item-row movement-row"><span class="item-icon">↕</span><span class="item-main"><b>${escapeHtml(movement.account_name)}</b><small>${escapeHtml(labels[movement.movement_type] || movement.movement_type)} · ${escapeHtml(date)}${movement.note ? ' · ' + escapeHtml(movement.note) : ''}</small></span><span class="item-amount ${Number(movement.amount) < 0 ? 'negative' : ''}">${Number(movement.amount) >= 0 ? '+' : '−'}${formatMoney(Math.abs(Number(movement.amount)))}</span></div>`;
+    }).join('') : empty('Chưa có biến động số dư', 'Các khoản điều chỉnh, chuyển khoản và giao dịch liên kết sẽ được lưu tại đây.');
+    $('#loadMoreMovements').hidden = !data.hasMoreMovements;
   }
 
   function renderAnalysis() {
@@ -152,6 +183,19 @@
     $('#incomeBar').style.width = max ? Math.max(income/max*100, income ? 4 : 0) + '%' : '0';
     $('#expenseBar').style.width = max ? Math.max(expense/max*100, expense ? 4 : 0) + '%' : '0';
     $('#analysisInsight').textContent = !income && !expense ? 'Khi bạn ghi nhận thu chi, các xu hướng trong tháng sẽ được tổng hợp tại đây.' : expense === 0 ? 'Tháng này chưa có khoản chi tiêu nào được ghi nhận.' : income === 0 ? `Khoản chi nhiều nhất hiện tại là ${largest}. Hãy thêm thu nhập để xem đầy đủ dòng tiền.` : income >= expense ? `Thu nhập tháng này cao hơn chi tiêu ${formatMoney(income-expense)}. Bạn đang giữ được dòng tiền dương.` : `Chi tiêu đang cao hơn thu nhập ${formatMoney(expense-income)}. Hãy xem lại nhóm ${largest}.`;
+    const ratio = data.summary.income_expense_ratio;
+    const savings = data.summary.savings_rate;
+    const metrics = [
+      ['TỶ LỆ CHI / THU', ratio == null ? '—' : `${(Number(ratio) * 100).toFixed(1)}%`],
+      ['TỶ LỆ TIẾT KIỆM', savings == null ? '—' : `${(Number(savings) * 100).toFixed(1)}%`],
+      ['TRẢ NỢ THÁNG NÀY', formatMoney(data.summary.monthly_debt_repayments)],
+      ['VAY MỚI THÁNG NÀY', formatMoney(data.summary.monthly_borrowing)],
+      ['MUA TÀI SẢN THÁNG NÀY', formatMoney(data.summary.monthly_asset_purchases)],
+    ];
+    $('#reportMetrics').innerHTML = metrics.map(([label, value]) => `<article class="metric-card"><small>${label}</small><b>${value}</b></article>`).join('');
+    const renderBreakdown = (items) => items.length ? items.map((item) => `<div class="category-row"><div class="category-head"><b>${escapeHtml(item.type)}</b><b>${formatMoney(Number(item.amount))}</b></div></div>`).join('') : '<p class="hint">Chưa có dữ liệu.</p>';
+    $('#assetsByType').innerHTML = renderBreakdown(data.summary.assets_by_type);
+    $('#liabilitiesByType').innerHTML = renderBreakdown(data.summary.liabilities_by_type);
     const totalExpense = categories.reduce((sum, [,amount]) => sum + amount, 0);
     $('#categoryList').innerHTML = categories.length ? categories.map(([name,amount], index) => { const share = totalExpense ? amount/totalExpense : 0; return `<article class="category-row"><div class="category-head"><b>${escapeHtml(name)}</b><b>${formatMoney(amount)}</b></div><div class="category-bottom"><div class="track"><i style="width:${Math.max(share*100,3)}%;background:${index===0?'var(--primary)':'var(--gold)'}"></i></div><small>${Math.round(share*100)}%</small></div></article>`; }).join('') : empty('Chưa đủ dữ liệu phân tích', 'Thêm các khoản thu chi để xem tỷ trọng chi tiêu theo danh mục.');
   }
@@ -163,7 +207,15 @@
     </div>`).join('') || '<p class="hint">Chưa có danh mục.</p>';
   }
 
-  function renderAll() { renderOverview(); renderTransactions(); renderAssets(); renderAnalysis(); renderCategoryManager(); }
+  function renderFinanceTypeManager() {
+    $('#financeTypeManager').innerHTML = data.financeTypes.map((type) => `<div class="member-row">
+      <span>${escapeHtml(type.label)}</span><small>${type.account_kind === 'asset' ? 'Tài sản' : 'Khoản phải trả'}${type.is_liquid ? ' · Thanh khoản' : ''}${type.is_archived ? ' · Đã lưu trữ' : ''}</small>
+      ${type.account_kind === 'asset' && !type.is_archived ? `<label class="liquid-toggle"><input type="checkbox" data-finance-type-liquid="${escapeHtml(type.id)}" ${type.is_liquid ? 'checked' : ''} /> Thanh khoản</label>` : ''}
+      ${type.is_archived ? '' : `<button type="button" data-archive-finance-type="${escapeHtml(type.id)}">Lưu trữ</button>`}
+    </div>`).join('') || '<p class="hint">Chưa có loại tài khoản.</p>';
+  }
+
+  function renderAll() { renderOverview(); renderTransactions(); renderAssets(); renderAnalysis(); renderCategoryManager(); renderFinanceTypeManager(); }
 
   function setCloudStatus(message, isError = false) {
     const notice = $('#cloudStatus');
@@ -341,6 +393,15 @@
       linkedAssetId: item.linked_asset_id || null,
       linkedDebtId: item.linked_debt_id || null,
       balanceEffect: item.balance_effect || null,
+      linkedAssetId2: item.linked_asset_id_2 || null,
+      linkedDebtId2: item.linked_debt_id_2 || null,
+      balanceEffect2: item.balance_effect_2 || null,
+      balanceMovementType: item.balance_movement_type || 'transaction',
+      balanceMovementType2: item.balance_movement_type_2 || 'transaction',
+      linkedAssetName: item.linked_asset_name || null,
+      linkedDebtName: item.linked_debt_name || null,
+      linkedAssetName2: item.linked_asset_name_2 || null,
+      linkedDebtName2: item.linked_debt_name_2 || null,
     };
   }
 
@@ -376,6 +437,64 @@
     return transactions;
   }
 
+  async function fetchAccountPage(spaceId, kind, cursor, limit = 50, includeArchived = false) {
+    const isAsset = kind === 'asset';
+    const { data: result, error } = await supabaseClient.rpc(isAsset ? 'list_space_assets' : 'list_space_liabilities', {
+      p_space_id: spaceId,
+      p_before_created_at: cursor?.createdAt || null,
+      p_before_id: cursor?.id || null,
+      p_limit: limit + 1,
+      p_include_archived: includeArchived,
+    });
+    if (error) throw error;
+    const hasMore = result.length > limit;
+    const items = result.slice(0, limit).map((item) => isAsset
+      ? { ...item, value: Number(item.value), accountTypeId: item.account_type_id, account_type_label: item.account_type_label, is_liquid: item.is_liquid }
+      : { ...item, amount: Number(item.amount), dueDate: item.due_date || null, accountTypeId: item.account_type_id, account_type_label: item.account_type_label });
+    const last = items[items.length - 1];
+    return { items, hasMore, cursor: hasMore && last ? { createdAt: last.created_at, id: last.id } : null };
+  }
+
+  async function fetchAllAccounts(spaceId, kind, includeArchived = false) {
+    const items = [];
+    let cursor = null;
+    let hasMore = true;
+    while (hasMore) {
+      const page = await fetchAccountPage(spaceId, kind, cursor, 100, includeArchived);
+      items.push(...page.items);
+      hasMore = page.hasMore;
+      cursor = page.cursor;
+    }
+    return items;
+  }
+
+  async function fetchAllMovements(spaceId) {
+    const movements = [];
+    let cursor = null;
+    let hasMore = true;
+    while (hasMore) {
+      const page = await fetchMovementPage(spaceId, cursor, 100);
+      movements.push(...page.movements);
+      hasMore = page.hasMore;
+      cursor = page.cursor;
+    }
+    return movements;
+  }
+
+  async function fetchMovementPage(spaceId, cursor, limit = 50) {
+    const { data: result, error } = await supabaseClient.rpc('list_space_balance_movements', {
+      p_space_id: spaceId,
+      p_before_created_at: cursor?.createdAt || null,
+      p_before_id: cursor?.id || null,
+      p_limit: limit + 1,
+    });
+    if (error) throw error;
+    const hasMore = result.length > limit;
+    const movements = result.slice(0, limit).map((item) => ({ ...item, amount: Number(item.amount) }));
+    const last = movements[movements.length - 1];
+    return { movements, hasMore, cursor: hasMore && last ? { createdAt: last.created_at, id: last.id } : null };
+  }
+
   async function reloadTransactions(transactionTypeFilter = filter) {
     const page = await fetchTransactionPage(activeSpace.id, null, transactionTypeFilter);
     data.transactions = page.transactions;
@@ -387,26 +506,30 @@
   async function loadSpaceData(spaceId, transactionTypeFilter = 'all') {
     const period = reportPeriod();
     const transactionPageRequest = fetchTransactionPage(spaceId, null, transactionTypeFilter);
-    const [transactionPage, recentPage, assets, debts, categories, summary] = await Promise.all([
+    const [transactionPage, recentPage, assets, debts, categories, financeTypes, movements, summary] = await Promise.all([
       transactionPageRequest,
       transactionTypeFilter === 'all' ? transactionPageRequest : fetchTransactionPage(spaceId, null, 'all'),
-      supabaseClient.from('assets').select('id,name,kind,value').eq('space_id', spaceId).order('created_at', { ascending: false }),
-      supabaseClient.from('debts').select('id,name,kind,amount,due_date').eq('space_id', spaceId).order('created_at', { ascending: false }),
+      fetchAccountPage(spaceId, 'asset', null),
+      fetchAccountPage(spaceId, 'liability', null),
       supabaseClient.from('transaction_categories').select('id,type,label,is_archived').eq('space_id', spaceId).order('type').order('label'),
+      supabaseClient.from('space_finance_types').select('id,account_kind,code,label,is_liquid,is_archived').eq('space_id', spaceId).order('account_kind').order('label'),
+      fetchMovementPage(spaceId, null),
       supabaseClient.rpc('get_space_financial_summary', {
         p_space_id: spaceId,
         p_month_start: period.start,
         p_month_end: period.end,
       }),
     ]);
-    for (const result of [assets, debts, categories, summary]) if (result.error) throw result.error;
+    for (const result of [categories, financeTypes, summary]) if (result.error) throw result.error;
     const totals = summary.data;
     return {
       transactions: transactionPage.transactions,
       recentTransactions: recentPage.transactions,
-      assets: assets.data.map((item) => ({ ...item, value: Number(item.value) })),
-      debts: debts.data.map((item) => ({ id:item.id, name:item.name, kind:item.kind, amount:Number(item.amount), ...(item.due_date ? { dueDate:item.due_date } : {}) })),
+      assets: assets.items,
+      debts: debts.items,
       categories: categories.data || [],
+      financeTypes: financeTypes.data || [],
+      movements: movements.movements,
       summary: {
         transaction_count: Number(totals.transaction_count),
         income_count: Number(totals.income_count),
@@ -417,11 +540,26 @@
         month_expense: Number(totals.month_expense),
         assets_value: Number(totals.assets_value),
         cash_value: Number(totals.cash_value),
-        debts_value: Number(totals.debts_value),
+        debts_value: Number(totals.debts_value ?? totals.liabilities_value),
+        liabilities_value: Number(totals.liabilities_value ?? totals.debts_value),
+        net_worth: Number(totals.net_worth),
+        income_expense_ratio: totals.income_expense_ratio == null ? null : Number(totals.income_expense_ratio),
+        savings_rate: totals.savings_rate == null ? null : Number(totals.savings_rate),
+        monthly_debt_repayments: Number(totals.monthly_debt_repayments ?? totals.month_debt_repayments ?? 0),
+        monthly_borrowing: Number(totals.monthly_borrowing || 0),
+        monthly_asset_purchases: Number(totals.monthly_asset_purchases || 0),
+        assets_by_type: (totals.assets_by_type || []).map((item) => ({ ...item, amount: Number(item.amount) })),
+        liabilities_by_type: (totals.liabilities_by_type || []).map((item) => ({ ...item, amount: Number(item.amount) })),
         month_categories: totals.month_categories || [],
       },
       hasMoreTransactions: transactionPage.hasMore,
       transactionCursor: transactionPage.cursor,
+      hasMoreAssets: assets.hasMore,
+      assetCursor: assets.cursor,
+      hasMoreDebts: debts.hasMore,
+      debtCursor: debts.cursor,
+      hasMoreMovements: movements.hasMore,
+      movementCursor: movements.cursor,
     };
   }
 
@@ -431,13 +569,31 @@
       type:item.type, amount:item.amount, category:item.category, note:item.note || '', date:item.date,
       linked_asset_id:item.linkedAssetId || null, linked_debt_id:item.linkedDebtId || null,
       balance_effect:item.balanceEffect || null,
+      linked_asset_id_2:item.linkedAssetId2 || null, linked_debt_id_2:item.linkedDebtId2 || null,
+      balance_effect_2:item.balanceEffect2 || null,
+      balance_movement_type:item.balanceMovementType || null,
+      balance_movement_type_2:item.balanceMovementType2 || null,
     };
   }
+  function getAccountTypeId(kind, accountTypeId, code) {
+    const rawCode = String(code || '');
+    const debtCode = kind === 'liability' ? ({
+      'vay':'loan', 'thẻ tín dụng':'credit-card', 'trả góp':'installment', 'khác':'other',
+    }[rawCode.toLocaleLowerCase('vi')] || rawCode) : rawCode;
+    const type = data.financeTypes.find((item) => item.id === accountTypeId && item.account_kind === kind)
+      || data.financeTypes.find((item) => item.code === debtCode && item.account_kind === kind)
+      || data.financeTypes.find((item) => item.account_kind === kind && item.label.toLocaleLowerCase('vi') === rawCode.toLocaleLowerCase('vi'))
+      || data.financeTypes.find((item) => item.account_kind === kind && item.code === 'other');
+    if (!type) throw new Error('Không tìm thấy loại tài khoản phù hợp trong không gian này.');
+    return type.id;
+  }
   function assetPayload(item) {
-    return { id:item.id, user_id:activeUser.id, space_id:activeSpace.id, name:item.name, kind:item.kind, value:item.value };
+    const typeId = getAccountTypeId('asset', item.accountTypeId || item.account_type_id, item.kind);
+    return { id:item.id, user_id:activeUser.id, space_id:activeSpace.id, name:item.name, kind:item.kind, value:item.value, account_type_id:typeId, is_archived:Boolean(item.is_archived) };
   }
   function debtPayload(item) {
-    return { id:item.id, user_id:activeUser.id, space_id:activeSpace.id, name:item.name, kind:item.kind, amount:item.amount, due_date:item.dueDate || null };
+    const typeId = getAccountTypeId('liability', item.accountTypeId || item.account_type_id, item.kind);
+    return { id:item.id, user_id:activeUser.id, space_id:activeSpace.id, name:item.name, kind:item.kind, amount:item.amount, due_date:item.dueDate || null, account_type_id:typeId, is_archived:Boolean(item.is_archived) };
   }
 
   async function replaceCloudData(replacement) {
@@ -447,6 +603,7 @@
       p_transactions: replacement.transactions.map(transactionPayload),
       p_assets: replacement.assets.map(assetPayload),
       p_debts: replacement.debts.map(debtPayload),
+      p_movements: replacement.movements || [],
     });
     if (error) throw error;
   }
@@ -561,22 +718,34 @@
     editingItem = null;
     formMode = mode;
     transactionType = 'expense';
-    $('#formTitle').textContent = mode === 'transaction' ? 'Ghi giao dịch' : mode === 'asset' ? 'Thêm tài sản' : 'Thêm khoản nợ';
+    $('#formTitle').textContent = mode === 'transaction' ? 'Ghi giao dịch' : mode === 'asset' ? 'Thêm tài sản' : mode === 'debt' ? 'Thêm khoản nợ' : 'Ghi biến động số dư';
     $('#transactionTypeGroup').hidden = mode !== 'transaction';
     $('#transactionFields').hidden = mode !== 'transaction';
     $('#assetFields').hidden = mode !== 'asset';
     $('#debtFields').hidden = mode !== 'debt';
+    $('#movementFields').hidden = mode !== 'movement';
     $('#amountInput').value = '';
     $('#nameInput').value = '';
     $('#debtNameInput').value = '';
     $('#noteInput').value = '';
     $('#dueDateInput').value = '';
     $('#linkedBalanceInput').value = '';
+    $('#linkedBalanceInput2').value = '';
+    $('#linkedBalanceSearch').value = '';
+    $('#linkedBalanceSearch2').value = '';
     $('#balanceEffectInput').value = 'increase';
+    $('#balanceEffectInput2').value = 'increase';
+    $('#balanceMovementTypeInput').value = 'transaction';
+    $('#balanceMovementTypeInput2').value = 'transaction';
+    $('#movementNoteInput').value = '';
+    $('#movementModeInput').value = 'adjustment';
+    $('#movementDirectionInput').value = 'increase';
     $('#formError').hidden = true;
     $('#financeForm .submit').textContent = 'Lưu khoản mục →';
+    updateAccountTypeOptions();
     updateCategories();
     updateLinkedBalances();
+    updateMovementInputs();
     $('#formModal').hidden = false;
   }
 
@@ -586,6 +755,7 @@
     if (!item) return;
     openForm(kind);
     editingItem = item;
+    updateAccountTypeOptions();
     $('#formTitle').textContent = kind === 'transaction' ? 'Sửa giao dịch' : kind === 'asset' ? 'Sửa tài sản' : 'Sửa khoản nợ';
     $('#amountInput').value = String(kind === 'asset' ? item.value : item.amount);
     if (kind === 'transaction') {
@@ -598,14 +768,21 @@
       $('#linkedBalanceInput').value = item.linkedAssetId
         ? `asset:${item.linkedAssetId}`
         : item.linkedDebtId ? `debt:${item.linkedDebtId}` : '';
+      $('#linkedBalanceInput2').value = item.linkedAssetId2
+        ? `asset:${item.linkedAssetId2}`
+        : item.linkedDebtId2 ? `debt:${item.linkedDebtId2}` : '';
       $('#balanceEffectInput').value = item.balanceEffect || 'increase';
+      $('#balanceEffectInput2').value = item.balanceEffect2 || 'increase';
+      $('#balanceMovementTypeInput').value = item.balance_movement_type || 'transaction';
+      $('#balanceMovementTypeInput2').value = item.balance_movement_type_2 || 'transaction';
       $('#balanceEffectInput').disabled = !$('#linkedBalanceInput').value;
+      $('#balanceEffectInput2').disabled = !$('#linkedBalanceInput2').value;
     } else if (kind === 'asset') {
       $('#nameInput').value = item.name;
-      $('#assetKindInput').value = item.kind;
+      $('#assetKindInput').value = item.accountTypeId;
     } else {
       $('#debtNameInput').value = item.name;
-      $('#debtKindInput').value = item.kind;
+      $('#debtKindInput').value = item.accountTypeId;
       $('#dueDateInput').value = item.dueDate || '';
     }
     $('#financeForm .submit').textContent = 'Lưu thay đổi →';
@@ -621,29 +798,96 @@
   }
 
   function updateLinkedBalances() {
-    const options = [
-      ...data.assets.map((item) => ({ value: `asset:${item.id}`, label: `Tài sản · ${item.name}` })),
-      ...data.debts.map((item) => ({ value: `debt:${item.id}`, label: `Khoản nợ · ${item.name}` })),
-    ];
-    $('#linkedBalanceInput').innerHTML = '<option value="">Không liên kết</option>' +
-      options.map((item) => `<option value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</option>`).join('');
+    const linkedOptions = [];
+    if (editingItem?.linkedAssetId) linkedOptions.push({ value:`asset:${editingItem.linkedAssetId}`, label:`Tài sản · ${editingItem.linkedAssetName || editingItem.linkedAssetId}` });
+    if (editingItem?.linkedDebtId) linkedOptions.push({ value:`debt:${editingItem.linkedDebtId}`, label:`Khoản phải trả · ${editingItem.linkedDebtName || editingItem.linkedDebtId}` });
+    if (editingItem?.linkedAssetId2) linkedOptions.push({ value:`asset:${editingItem.linkedAssetId2}`, label:`Tài sản · ${editingItem.linkedAssetName2 || editingItem.linkedAssetId2}` });
+    if (editingItem?.linkedDebtId2) linkedOptions.push({ value:`debt:${editingItem.linkedDebtId2}`, label:`Khoản phải trả · ${editingItem.linkedDebtName2 || editingItem.linkedDebtId2}` });
+    const optionsHtml = linkedOptions.map((item) => `<option value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</option>`).join('');
+    $('#linkedBalanceInput').innerHTML = '<option value="">Không liên kết</option>' + optionsHtml;
+    $('#linkedBalanceInput2').innerHTML = '<option value="">Không liên kết</option>' + optionsHtml;
     $('#balanceEffectInput').disabled = !$('#linkedBalanceInput').value;
+    $('#balanceEffectInput2').disabled = !$('#linkedBalanceInput2').value;
+  }
+
+  function updateAccountTypeOptions() {
+    const renderTypes = (kind, selectedId) => data.financeTypes
+      .filter((item) => item.account_kind === kind && (!item.is_archived || item.id === selectedId))
+      .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}${item.is_archived ? ' · Đã lưu trữ' : ''}</option>`)
+      .join('');
+    $('#assetKindInput').innerHTML = renderTypes('asset', editingItem?.accountTypeId);
+    $('#debtKindInput').innerHTML = renderTypes('liability', editingItem?.accountTypeId);
+    if (!editingItem && $('#assetKindInput').options.length) {
+      const liquidType = data.financeTypes.find((item) => item.account_kind === 'asset' && item.is_liquid && !item.is_archived);
+      $('#assetKindInput').value = liquidType?.id || $('#assetKindInput').options[0].value;
+    }
+    if (!editingItem && $('#debtKindInput').options.length) $('#debtKindInput').value = $('#debtKindInput').options[0].value;
+  }
+
+  async function searchAccountOptions(searchInput, select, prompt) {
+    const query = searchInput.value.trim();
+    if (query.length < 2) {
+      select.innerHTML = `<option value="">${escapeHtml(prompt)}</option>`;
+      return;
+    }
+    const requestId = Number(searchInput.dataset.requestId || 0) + 1;
+    searchInput.dataset.requestId = String(requestId);
+    try {
+      const { data: accounts, error } = await supabaseClient.rpc('search_space_accounts', {
+        p_space_id: activeSpace.id, p_query: query, p_limit: 25,
+      });
+      if (error) throw error;
+      if (searchInput.dataset.requestId !== String(requestId)) return;
+      select.innerHTML = `<option value="">${accounts.length ? 'Chọn tài khoản' : 'Không tìm thấy tài khoản'}</option>` +
+        accounts.map((account) => `<option value="${escapeHtml(account.account_kind)}:${escapeHtml(account.id)}">${escapeHtml(account.account_kind === 'asset' ? 'Tài sản' : 'Khoản phải trả')} · ${escapeHtml(account.name)} · ${escapeHtml(account.account_type_label)}</option>`).join('');
+    } catch (error) {
+      if (searchInput.dataset.requestId === String(requestId)) setCloudStatus(`Không thể tìm tài khoản: ${error.message}`, true);
+    }
+  }
+
+  function updateMovementInputs() {
+    const isAdjustment = $('#movementModeInput').value === 'adjustment';
+    $('#movementDirectionLabel').hidden = !isAdjustment;
+    $('#movementDestinationSearchLabel').hidden = isAdjustment;
+    $('#movementDestinationSelectLabel').hidden = isAdjustment;
+  }
+
+  function syncLinkedMovementType(changedInput) {
+    const first = changedInput.id === 'balanceMovementTypeInput';
+    const otherType = first ? $('#balanceMovementTypeInput2') : $('#balanceMovementTypeInput');
+    const otherLink = first ? $('#linkedBalanceInput2') : $('#linkedBalanceInput');
+    const firstLink = $('#linkedBalanceInput').value;
+    const secondLink = $('#linkedBalanceInput2').value;
+    if (otherLink.value) otherType.value = changedInput.value;
+    if (changedInput.value === 'repayment') {
+      if (firstLink) $('#balanceEffectInput').value = 'decrease';
+      if (secondLink) $('#balanceEffectInput2').value = 'decrease';
+    } else if (changedInput.value === 'borrowing') {
+      if (firstLink) $('#balanceEffectInput').value = 'increase';
+      if (secondLink) $('#balanceEffectInput2').value = 'increase';
+    } else if (['purchase', 'transfer'].includes(changedInput.value) && secondLink) {
+      $('#balanceEffectInput2').value = $('#balanceEffectInput').value === 'increase' ? 'decrease' : 'increase';
+    }
   }
 
   function closeForm() { $('#formModal').hidden = true; }
 
   async function deleteBy(id, kind) {
-    if (!confirm('Xóa khoản mục này? Thao tác này không thể hoàn tác.')) return;
+    const archive = kind !== 'transaction';
+    if (!confirm(archive ? 'Lưu trữ khoản mục này? Lịch sử biến động sẽ được giữ lại.' : 'Xóa giao dịch này? Biến động số dư liên kết sẽ được đảo lại.')) return;
     try {
       if (hasCloudSession()) {
         const table = kind === 'transaction' ? 'transactions' : kind === 'asset' ? 'assets' : 'debts';
-        const { error } = await supabaseClient.from(table).delete().eq('id', id).eq('space_id', activeSpace.id);
+        const query = supabaseClient.from(table);
+        const { error } = archive
+          ? await query.update({ is_archived: true }).eq('id', id).eq('space_id', activeSpace.id)
+          : await query.delete().eq('id', id).eq('space_id', activeSpace.id);
         if (error) throw error;
       }
       data = await loadSpaceData(activeSpace.id, filter);
       renderAll();
     } catch (error) {
-      setCloudStatus(`Không thể xóa khoản mục: ${error.message}`, true);
+      setCloudStatus(`Không thể ${archive ? 'lưu trữ' : 'xóa'} khoản mục: ${error.message}`, true);
     }
   }
 
@@ -666,6 +910,29 @@
   }));
   $('#linkedBalanceInput').addEventListener('change', () => {
     $('#balanceEffectInput').disabled = !$('#linkedBalanceInput').value;
+    if ($('#balanceMovementTypeInput').value !== 'transaction') syncLinkedMovementType($('#balanceMovementTypeInput'));
+    else if ($('#balanceMovementTypeInput2').value !== 'transaction') syncLinkedMovementType($('#balanceMovementTypeInput2'));
+  });
+  $('#linkedBalanceInput2').addEventListener('change', () => {
+    $('#balanceEffectInput2').disabled = !$('#linkedBalanceInput2').value;
+    if ($('#balanceMovementTypeInput').value !== 'transaction') syncLinkedMovementType($('#balanceMovementTypeInput'));
+    else if ($('#balanceMovementTypeInput2').value !== 'transaction') syncLinkedMovementType($('#balanceMovementTypeInput2'));
+  });
+  $('#balanceMovementTypeInput').addEventListener('change', () => syncLinkedMovementType($('#balanceMovementTypeInput')));
+  $('#balanceMovementTypeInput2').addEventListener('change', () => syncLinkedMovementType($('#balanceMovementTypeInput2')));
+  $('#balanceEffectInput').addEventListener('change', () => {
+    if (['purchase', 'transfer'].includes($('#balanceMovementTypeInput').value) && $('#linkedBalanceInput2').value) {
+      $('#balanceEffectInput2').value = $('#balanceEffectInput').value === 'increase' ? 'decrease' : 'increase';
+    }
+  });
+  $('#linkedBalanceSearch').addEventListener('input', () => void searchAccountOptions($('#linkedBalanceSearch'), $('#linkedBalanceInput'), 'Không liên kết'));
+  $('#linkedBalanceSearch2').addEventListener('input', () => void searchAccountOptions($('#linkedBalanceSearch2'), $('#linkedBalanceInput2'), 'Không liên kết'));
+  $('#movementAccountSearch').addEventListener('input', () => void searchAccountOptions($('#movementAccountSearch'), $('#movementAccountInput'), 'Chọn tài khoản'));
+  $('#movementDestinationSearch').addEventListener('input', () => void searchAccountOptions($('#movementDestinationSearch'), $('#movementDestinationInput'), 'Chọn tài khoản'));
+  $('#movementModeInput').addEventListener('change', updateMovementInputs);
+  $('#financeTypeKindInput').addEventListener('change', () => {
+    $('#financeTypeLiquidInput').disabled = $('#financeTypeKindInput').value === 'liability';
+    if ($('#financeTypeLiquidInput').disabled) $('#financeTypeLiquidInput').checked = false;
   });
   $('#loadMoreTransactions').addEventListener('click', async () => {
     if (!activeSpace || !data.transactionCursor || !data.hasMoreTransactions) return;
@@ -683,6 +950,50 @@
     }
   });
 
+  async function loadMoreAccounts(kind) {
+    const isAsset = kind === 'asset';
+    const cursor = isAsset ? data.assetCursor : data.debtCursor;
+    const more = isAsset ? data.hasMoreAssets : data.hasMoreDebts;
+    if (!activeSpace || !cursor || !more) return;
+    const button = isAsset ? $('#loadMoreAssets') : $('#loadMoreDebts');
+    button.disabled = true;
+    try {
+      const page = await fetchAccountPage(activeSpace.id, kind, cursor);
+      if (isAsset) {
+        data.assets.push(...page.items);
+        data.hasMoreAssets = page.hasMore;
+        data.assetCursor = page.cursor;
+      } else {
+        data.debts.push(...page.items);
+        data.hasMoreDebts = page.hasMore;
+        data.debtCursor = page.cursor;
+      }
+      renderAssets();
+    } catch (error) {
+      setCloudStatus(`Không thể tải thêm khoản mục: ${error.message}`, true);
+    } finally {
+      button.disabled = false;
+    }
+  }
+  $('#loadMoreAssets').addEventListener('click', () => void loadMoreAccounts('asset'));
+  $('#loadMoreDebts').addEventListener('click', () => void loadMoreAccounts('liability'));
+  $('#loadMoreMovements').addEventListener('click', async () => {
+    if (!activeSpace || !data.movementCursor || !data.hasMoreMovements) return;
+    const button = $('#loadMoreMovements');
+    button.disabled = true;
+    try {
+      const page = await fetchMovementPage(activeSpace.id, data.movementCursor);
+      data.movements.push(...page.movements);
+      data.hasMoreMovements = page.hasMore;
+      data.movementCursor = page.cursor;
+      renderAssets();
+    } catch (error) {
+      setCloudStatus(`Không thể tải thêm biến động: ${error.message}`, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
   $('#categoryForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     $('#categoryError').hidden = true;
@@ -692,6 +1003,28 @@
         p_space_id: activeSpace.id,
         p_type: $('#categoryTypeInput').value,
         p_label: label,
+      });
+
+      $('#financeTypeForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        $('#financeTypeError').hidden = true;
+        try {
+          const kind = $('#financeTypeKindInput').value;
+          const label = $('#financeTypeLabelInput').value.trim();
+          const isLiquid = kind === 'asset' && $('#financeTypeLiquidInput').checked;
+          const { data: id, error } = await supabaseClient.rpc('create_space_finance_type', {
+            p_space_id: activeSpace.id, p_account_kind: kind, p_label: label, p_is_liquid: isLiquid,
+          });
+          if (error) throw error;
+          data.financeTypes.push({ id, account_kind: kind, code: `custom-${id}`, label, is_liquid: isLiquid, is_archived: false });
+          $('#financeTypeLabelInput').value = '';
+          $('#financeTypeLiquidInput').checked = false;
+          updateAccountTypeOptions();
+          renderFinanceTypeManager();
+        } catch (error) {
+          $('#financeTypeError').textContent = `Không thể thêm loại tài khoản: ${error.message}`;
+          $('#financeTypeError').hidden = false;
+        }
       });
       if (error) throw error;
       data.categories.push({ id, type: $('#categoryTypeInput').value, label, is_archived: false });
@@ -713,6 +1046,7 @@
     const changeRole = event.target.closest('[data-member-role]');
     const revokeInvite = event.target.closest('[data-revoke-invite]');
     const archiveCategory = event.target.closest('[data-archive-category]');
+    const archiveFinanceType = event.target.closest('[data-archive-finance-type]');
     if (edit) editItem(edit.dataset.editKind, edit.dataset.editId);
     else if (transaction) void deleteBy(transaction.dataset.deleteTransaction, 'transaction');
     else if (asset) void deleteBy(asset.dataset.deleteAsset, 'asset');
@@ -731,6 +1065,22 @@
       } catch (error) {
         $('#categoryError').textContent = `Không thể lưu trữ danh mục: ${error.message}`;
         $('#categoryError').hidden = false;
+      }
+    })();
+    else if (archiveFinanceType) void (async () => {
+      $('#financeTypeError').hidden = true;
+      try {
+        const { error } = await supabaseClient.rpc('archive_space_finance_type', {
+          p_space_id: activeSpace.id, p_type_id: archiveFinanceType.dataset.archiveFinanceType,
+        });
+        if (error) throw error;
+        const financeType = data.financeTypes.find((item) => item.id === archiveFinanceType.dataset.archiveFinanceType);
+        if (financeType) financeType.is_archived = true;
+        updateAccountTypeOptions();
+        renderFinanceTypeManager();
+      } catch (error) {
+        $('#financeTypeError').textContent = `Không thể lưu trữ loại tài khoản: ${error.message}`;
+        $('#financeTypeError').hidden = false;
       }
     })();
     else if (removeMember) void (async () => {
@@ -755,6 +1105,26 @@
       } catch (error) { $('#inviteError').textContent = `Không thể thu hồi lời mời: ${error.message}`; $('#inviteError').hidden = false; }
     })();
   });
+  document.addEventListener('change', (event) => {
+    const toggle = event.target.closest('[data-finance-type-liquid]');
+    if (!toggle) return;
+    void (async () => {
+      $('#financeTypeError').hidden = true;
+      try {
+        const { error } = await supabaseClient.rpc('set_space_finance_type_liquidity', {
+          p_space_id: activeSpace.id, p_type_id: toggle.dataset.financeTypeLiquid, p_is_liquid: toggle.checked,
+        });
+        if (error) throw error;
+        const financeType = data.financeTypes.find((item) => item.id === toggle.dataset.financeTypeLiquid);
+        if (financeType) financeType.is_liquid = toggle.checked;
+        renderFinanceTypeManager();
+      } catch (error) {
+        toggle.checked = !toggle.checked;
+        $('#financeTypeError').textContent = `Không thể thay đổi tính thanh khoản: ${error.message}`;
+        $('#financeTypeError').hidden = false;
+      }
+    })();
+  });
   document.addEventListener('contextmenu', (event) => {
     if (event.target.closest('[data-delete-transaction],[data-delete-asset],[data-delete-debt]')) event.preventDefault();
   });
@@ -768,39 +1138,73 @@
       let table;
       if (formMode === 'transaction') {
         const linkedValue = $('#linkedBalanceInput').value;
+        const linkedValue2 = $('#linkedBalanceInput2').value;
+        if (linkedValue && linkedValue === linkedValue2) throw new Error('Hai liên kết phải trỏ đến các khoản mục khác nhau.');
         item = {
           id:editingItem?.id || makeId(), type:transactionType, amount, category:$('#categoryInput').value,
           note:$('#noteInput').value.trim(), date:editingItem?.date || new Date().toISOString(),
           linkedAssetId:linkedValue.startsWith('asset:') ? linkedValue.slice(6) : null,
           linkedDebtId:linkedValue.startsWith('debt:') ? linkedValue.slice(5) : null,
           balanceEffect:linkedValue ? $('#balanceEffectInput').value : null,
+          linkedAssetId2:linkedValue2.startsWith('asset:') ? linkedValue2.slice(6) : null,
+          linkedDebtId2:linkedValue2.startsWith('debt:') ? linkedValue2.slice(5) : null,
+          balanceEffect2:linkedValue2 ? $('#balanceEffectInput2').value : null,
+          balanceMovementType:linkedValue ? $('#balanceMovementTypeInput').value : null,
+          balanceMovementType2:linkedValue2 ? $('#balanceMovementTypeInput2').value : null,
         };
         table = 'transactions';
       } else if (formMode === 'asset') {
         const name = $('#nameInput').value.trim();
         if (!name) { $('#formError').textContent = 'Vui lòng nhập tên tài sản.'; $('#formError').hidden = false; return; }
-        item = { id:makeId(), name, kind:$('#assetKindInput').value, value:amount };
+        const accountType = data.financeTypes.find((type) => type.id === $('#assetKindInput').value);
+        if (!accountType) throw new Error('Chọn một loại tài sản đang hoạt động.');
+        item = { id:editingItem?.id || makeId(), name, kind:accountType.code, accountTypeId:accountType.id, value:amount };
         table = 'assets';
-      } else {
+      } else if (formMode === 'debt') {
         const name = $('#debtNameInput').value.trim();
         if (!name) { $('#formError').textContent = 'Vui lòng nhập tên khoản nợ.'; $('#formError').hidden = false; return; }
+        const accountType = data.financeTypes.find((type) => type.id === $('#debtKindInput').value);
+        if (!accountType) throw new Error('Chọn một loại khoản phải trả đang hoạt động.');
         const dueDate = $('#dueDateInput').value;
-        item = { id:makeId(), name, kind:$('#debtKindInput').value, amount, ...(dueDate ? { dueDate } : {}) };
+        item = { id:editingItem?.id || makeId(), name, kind:accountType.code, accountTypeId:accountType.id, amount, ...(dueDate ? { dueDate } : {}) };
         table = 'debts';
       }
       if (hasCloudSession()) {
-        const payload = table === 'transactions' ? transactionPayload(item) : table === 'assets' ? assetPayload(item) : debtPayload(item);
-        if (editingItem) {
-          item.id = editingItem.id;
-          payload.id = item.id;
-          delete payload.user_id;
-          const { data: updated, error } = await supabaseClient.from(table).update(payload)
-            .eq('id', item.id).eq('space_id', activeSpace.id).select('id').maybeSingle();
-          if (error) throw error;
-          if (!updated) throw new Error('Khoản mục không còn tồn tại trong không gian này.');
+        if (formMode === 'movement') {
+          const movementMode = $('#movementModeInput').value;
+          const accountValue = $('#movementAccountInput').value;
+          if (!accountValue) throw new Error('Chọn tài khoản cần cập nhật.');
+          const [sourceKind, sourceId] = accountValue.split(':');
+          const common = { p_space_id:activeSpace.id, p_amount:amount, p_note:$('#movementNoteInput').value.trim(), p_occurred_at:new Date().toISOString() };
+          if (movementMode === 'adjustment') {
+            const { error } = await supabaseClient.rpc('record_account_movement', {
+              ...common, p_account_kind:sourceKind, p_account_id:sourceId, p_direction:$('#movementDirectionInput').value,
+            });
+            if (error) throw error;
+          } else {
+            const destinationValue = $('#movementDestinationInput').value;
+            if (!destinationValue) throw new Error('Chọn tài khoản nhận hoặc đối ứng.');
+            const [destinationKind, destinationId] = destinationValue.split(':');
+            const { error } = await supabaseClient.rpc('record_account_transfer', {
+              ...common, p_movement_type:movementMode, p_source_kind:sourceKind, p_source_id:sourceId,
+              p_destination_kind:destinationKind, p_destination_id:destinationId,
+            });
+            if (error) throw error;
+          }
         } else {
-          const { error } = await supabaseClient.from(table).insert(payload);
-          if (error) throw error;
+          const payload = table === 'transactions' ? transactionPayload(item) : table === 'assets' ? assetPayload(item) : debtPayload(item);
+          if (editingItem) {
+            item.id = editingItem.id;
+            payload.id = item.id;
+            delete payload.user_id;
+            const { data: updated, error } = await supabaseClient.from(table).update(payload)
+              .eq('id', item.id).eq('space_id', activeSpace.id).select('id').maybeSingle();
+            if (error) throw error;
+            if (!updated) throw new Error('Khoản mục không còn tồn tại trong không gian này.');
+          } else {
+            const { error } = await supabaseClient.from(table).insert(payload);
+            if (error) throw error;
+          }
         }
       } else {
         throw new Error('Bạn cần đăng nhập trước khi lưu dữ liệu.');
@@ -877,11 +1281,12 @@
     try {
       if (!activeSpace) throw new Error('Không tìm thấy không gian tài chính hiện tại.');
       const backup = {
-        format:'dong-tien-backup-v1',
+        format:'dong-tien-backup-v2',
         exportedAt:new Date().toISOString(),
         transactions:await fetchAllTransactions(activeSpace.id),
-        assets:data.assets,
-        debts:data.debts,
+        assets:await fetchAllAccounts(activeSpace.id, 'asset', true),
+        debts:await fetchAllAccounts(activeSpace.id, 'liability', true),
+        movements:await fetchAllMovements(activeSpace.id),
       };
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type:'application/json' });
       const url = URL.createObjectURL(blob);
@@ -898,8 +1303,8 @@
     if (!file) return;
     try {
       const parsed = JSON.parse(await file.text());
-      if (parsed.format !== 'dong-tien-backup-v1') throw new Error('Tệp không đúng định dạng sao lưu của Dòng Tiền.');
-      const restored = { transactions: parsed.transactions, assets: parsed.assets, debts: parsed.debts };
+      if (!['dong-tien-backup-v1', 'dong-tien-backup-v2'].includes(parsed.format)) throw new Error('Tệp không đúng định dạng sao lưu của Dòng Tiền.');
+      const restored = { transactions: parsed.transactions, assets: parsed.assets, debts: parsed.debts, movements: parsed.movements || [] };
       validateData(restored);
       if (!activeSpace || activeSpace.kind !== 'personal') throw new Error('Chỉ có thể khôi phục bản sao lưu trong không gian cá nhân.');
       if (!confirm(`Khôi phục dữ liệu: ${restored.transactions.length} giao dịch, ${restored.assets.length} tài sản và ${restored.debts.length} khoản nợ? Dữ liệu hiện tại sẽ bị thay thế.`)) return;

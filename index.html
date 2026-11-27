@@ -105,15 +105,23 @@
           <article class="net-card"><div><p>GIÁ TRỊ RÒNG</p><strong id="assetNetValue">0 ₫</strong></div><div class="net-breakdown"><div><span>Tổng tài sản</span><b id="assetTotal">0 ₫</b></div><i></i><div><span>Khoản phải trả</span><b id="debtTotal">0 ₫</b></div></div></article>
           <div class="section-heading"><h2>Tài sản</h2><button class="small-button success" data-open-form="asset">＋ Thêm tài sản</button></div>
           <div id="assetList"></div>
+          <button class="secondary-button load-more-button" id="loadMoreAssets" type="button" hidden>Tải thêm tài sản</button>
           <div class="section-heading"><h2>Khoản phải trả</h2><button class="small-button danger" data-open-form="debt">＋ Thêm khoản nợ</button></div>
           <div id="debtList"></div>
-          <p class="hint">Chọn khoản mục để xóa.</p>
+          <button class="secondary-button load-more-button" id="loadMoreDebts" type="button" hidden>Tải thêm khoản phải trả</button>
+          <div class="section-heading"><h2>Biến động số dư</h2><button class="small-button" data-open-form="movement">＋ Ghi biến động</button></div>
+          <div id="movementList"></div>
+          <button class="secondary-button load-more-button" id="loadMoreMovements" type="button" hidden>Tải thêm biến động</button>
+          <p class="hint">Khoản mục được lưu trữ thay vì xóa để giữ lịch sử biến động.</p>
         </section>
 
         <section class="page" id="analysisPage" data-page="analysis">
           <header class="page-heading"><div><p class="eyebrow">BÁO CÁO CÁ NHÂN</p><h1>Phân tích</h1><p class="page-subtitle">Những tín hiệu hữu ích từ thói quen chi tiêu.</p></div></header>
           <article class="period-card"><span>◷</span><div><p>KỲ BÁO CÁO</p><strong id="analysisMonth"></strong></div><b class="period-status">THÁNG NÀY</b></article>
           <article class="panel"><div class="panel-title"><h2>Thu và chi</h2><span>₫ VND</span></div><div class="bar-line"><span>Thu nhập</span><strong id="analysisIncome" class="green"></strong></div><div class="track"><i id="incomeBar" class="income-bar"></i></div><div class="bar-line second"><span>Chi tiêu</span><strong id="analysisExpense" class="red"></strong></div><div class="track"><i id="expenseBar" class="expense-bar"></i></div><div class="net-row"><span>Dòng tiền ròng</span><strong id="analysisNet"></strong></div></article>
+          <div class="report-metrics" id="reportMetrics"></div>
+          <h2 class="content-title">Tài sản theo loại</h2><div id="assetsByType"></div>
+          <h2 class="content-title">Khoản phải trả theo loại</h2><div id="liabilitiesByType"></div>
           <article class="insight-card"><span class="insight-icon">✦</span><div><h2>Góc nhìn của bạn</h2><p id="analysisInsight"></p><small>Phân tích cơ bản, dựa trên dữ liệu riêng của bạn.</small></div></article>
           <h2 class="content-title">Chi tiêu theo danh mục</h2><div id="categoryList"></div>
         </section>
@@ -136,12 +144,27 @@
         <div id="transactionFields">
           <label>DANH MỤC<select id="categoryInput"></select></label>
           <label>GHI CHÚ<input id="noteInput" placeholder="Ví dụ: cà phê sáng" /></label>
-          <label>LIÊN KẾT SỐ DƯ<select id="linkedBalanceInput"><option value="">Không liên kết</option></select></label>
+          <label>TÌM TÀI KHOẢN<input id="linkedBalanceSearch" autocomplete="off" placeholder="Nhập ít nhất 2 ký tự" /></label>
+          <label>TÀI KHOẢN LIÊN KẾT<select id="linkedBalanceInput"><option value="">Không liên kết</option></select></label>
           <label>ẢNH HƯỞNG SỐ DƯ<select id="balanceEffectInput"><option value="increase">Tăng số dư</option><option value="decrease">Giảm số dư</option></select></label>
-          <small class="form-help">Chỉ khoản mục được liên kết mới thay đổi số dư tài sản hoặc khoản nợ.</small>
+          <label>PHÂN LOẠI BIẾN ĐỘNG<select id="balanceMovementTypeInput"><option value="transaction">Giao dịch</option><option value="purchase">Mua tài sản</option><option value="transfer">Chuyển khoản</option><option value="repayment">Trả nợ</option><option value="borrowing">Vay mới</option></select></label>
+          <label>TÌM TÀI KHOẢN THỨ HAI<input id="linkedBalanceSearch2" autocomplete="off" placeholder="Tùy chọn · nhập ít nhất 2 ký tự" /></label>
+          <label>TÀI KHOẢN THỨ HAI<select id="linkedBalanceInput2"><option value="">Không liên kết</option></select></label>
+          <label>ẢNH HƯỞNG THỨ HAI<select id="balanceEffectInput2"><option value="increase">Tăng số dư</option><option value="decrease">Giảm số dư</option></select></label>
+          <label>PHÂN LOẠI THỨ HAI<select id="balanceMovementTypeInput2"><option value="transaction">Giao dịch</option><option value="purchase">Mua tài sản</option><option value="transfer">Chuyển khoản</option><option value="repayment">Trả nợ</option><option value="borrowing">Vay mới</option></select></label>
+          <small class="form-help">Chỉ khoản mục được liên kết mới thay đổi số dư. Hai liên kết cho phép ghi nhận đồng thời hai vế, như mua tài sản hoặc trả nợ.</small>
         </div>
-        <div id="assetFields" hidden><label>TÊN KHOẢN MỤC<input id="nameInput" placeholder="Ví dụ: Tiết kiệm ngân hàng" /></label><label>LOẠI TÀI SẢN<select id="assetKindInput"><option value="cash">Tiền mặt & tiền gửi</option><option value="investment">Đầu tư</option><option value="property">Bất động sản</option><option value="business">Kinh doanh</option><option value="other">Tài sản khác</option></select></label></div>
-        <div id="debtFields" hidden><label>TÊN KHOẢN MỤC<input id="debtNameInput" placeholder="Ví dụ: Thẻ tín dụng" /></label><label>LOẠI KHOẢN PHẢI TRẢ<select id="debtKindInput"><option>Vay</option><option>Thẻ tín dụng</option><option>Trả góp</option><option>Khác</option></select></label><label>NGÀY ĐẾN HẠN (TÙY CHỌN)<input id="dueDateInput" type="date" /></label></div>
+        <div id="assetFields" hidden><label>TÊN KHOẢN MỤC<input id="nameInput" placeholder="Ví dụ: Tiết kiệm ngân hàng" /></label><label>LOẠI TÀI SẢN<select id="assetKindInput"></select></label></div>
+        <div id="debtFields" hidden><label>TÊN KHOẢN MỤC<input id="debtNameInput" placeholder="Ví dụ: Thẻ tín dụng" /></label><label>LOẠI KHOẢN PHẢI TRẢ<select id="debtKindInput"></select></label><label>NGÀY ĐẾN HẠN (TÙY CHỌN)<input id="dueDateInput" type="date" /></label></div>
+        <div id="movementFields" hidden>
+          <label>LOẠI BIẾN ĐỘNG<select id="movementModeInput"><option value="adjustment">Điều chỉnh số dư</option><option value="transfer">Chuyển khoản</option><option value="purchase">Mua tài sản</option><option value="repayment">Trả nợ</option><option value="borrowing">Vay mới</option></select></label>
+          <label id="movementAccountLabel">TÌM TÀI KHOẢN<input id="movementAccountSearch" autocomplete="off" placeholder="Nhập ít nhất 2 ký tự" /></label>
+          <label id="movementAccountSelectLabel">TÀI KHOẢN<select id="movementAccountInput"><option value="">Chọn tài khoản</option></select></label>
+          <label id="movementDirectionLabel">CHIỀU ĐIỀU CHỈNH<select id="movementDirectionInput"><option value="increase">Tăng số dư</option><option value="decrease">Giảm số dư</option></select></label>
+          <label id="movementDestinationSearchLabel">TÌM TÀI KHOẢN ĐẾN<input id="movementDestinationSearch" autocomplete="off" placeholder="Nhập ít nhất 2 ký tự" /></label>
+          <label id="movementDestinationSelectLabel">TÀI KHOẢN ĐẾN<select id="movementDestinationInput"><option value="">Chọn tài khoản</option></select></label>
+          <label>GHI CHÚ<input id="movementNoteInput" maxlength="500" placeholder="Mô tả biến động" /></label>
+        </div>
         <p class="form-error" id="formError" role="alert" hidden></p>
         <button class="primary-button submit" type="submit">Lưu khoản mục <span>→</span></button>
       </form>
@@ -203,6 +226,18 @@
           <p class="form-error" id="categoryError" role="alert" hidden></p>
           <div id="categoryManager" class="member-list"></div>
           <p class="hint">Danh mục đã dùng chỉ có thể lưu trữ; nhãn giao dịch cũ được giữ nguyên.</p>
+        </section>
+        <section class="category-settings">
+          <h3>LOẠI TÀI SẢN & KHOẢN PHẢI TRẢ</h3>
+          <form id="financeTypeForm" class="inline-form">
+            <label>NHÓM<select id="financeTypeKindInput"><option value="asset">Tài sản</option><option value="liability">Khoản phải trả</option></select></label>
+            <label>TÊN LOẠI<input id="financeTypeLabelInput" maxlength="60" required placeholder="Ví dụ: Quỹ khẩn cấp" /></label>
+            <label class="liquid-type-option"><input id="financeTypeLiquidInput" type="checkbox" />Tính vào tài sản thanh khoản</label>
+            <button class="secondary-button" type="submit">Thêm</button>
+          </form>
+          <p class="form-error" id="financeTypeError" role="alert" hidden></p>
+          <div id="financeTypeManager" class="member-list"></div>
+          <p class="hint">Loại đã dùng được lưu trữ, không xóa cứng; nhãn giao dịch cũ được giữ nguyên.</p>
         </section>
         <h3>DỮ LIỆU CỦA BẠN</h3>
         <button class="action-row" id="exportBackup"><span>⇧</span><div><b>Sao lưu ra tệp JSON</b><small>Tạo bản sao lưu dữ liệu hiện tại</small></div><i>›</i></button>
