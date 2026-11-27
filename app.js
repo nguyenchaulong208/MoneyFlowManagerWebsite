@@ -149,6 +149,10 @@
     $('#todayLabel').textContent = new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: 'numeric', month: 'long' }).format(now);
     $('#monthIncome').textContent = compactMoney(data.summary.month_income);
     $('#monthExpense').textContent = compactMoney(data.summary.month_expense);
+    $('#monthNet').textContent = (data.summary.month_net_cash_flow >= 0 ? '+' : '−') + formatMoney(Math.abs(data.summary.month_net_cash_flow));
+    $('#savingsRate').textContent = data.summary.savings_rate == null ? '—' : `${(Number(data.summary.savings_rate) * 100).toFixed(1)}%`;
+    const savings = Number(data.summary.savings_rate || 0);
+    $('#savingsBar').style.width = savings > 0 ? Math.max(savings * 100, savings ? 4 : 0) + '%' : '0';
     $('#recentTransactions').innerHTML = data.recentTransactions.length ? data.recentTransactions.slice(0, 4).map((item) => transactionRow(item, false)).join('') : empty('Bắt đầu ghi dòng tiền', 'Giao dịch đầu tiên sẽ xuất hiện ở đây. Dữ liệu được lưu riêng cho bạn.');
   }
 
@@ -193,19 +197,71 @@
     const netCashFlow = data.summary.month_net_cash_flow;
     const categories = data.summary.month_categories.map((item) => [item.category, Number(item.amount)]);
     const month = new Intl.DateTimeFormat('vi-VN', { month:'long', year:'numeric' }).format(now);
+    const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toLocaleDateString('vi-VN', { month:'long', year:'numeric' });
     const largest = categories[0]?.[0] || '—';
+
+    // So sánh tháng trước
+    const cmp = data.comparison || {};
     $('#analysisMonth').textContent = month;
     $('#analysisPeriodDescription').textContent = period.label;
     $('#analysisIncome').textContent = formatMoney(income);
     $('#analysisExpense').textContent = formatMoney(expense);
     $('#analysisNet').textContent = (netCashFlow >= 0 ? '+' : '−') + formatMoney(Math.abs(netCashFlow));
     $('#analysisNet').style.color = netCashFlow >= 0 ? 'var(--primary)' : 'var(--danger)';
+
+    // So sánh với tháng trước
+    if (cmp.income_variance != null || cmp.expense_variance != null) {
+      const incomeDiff = cmp.income_variance || 0;
+      const expenseDiff = cmp.expense_variance || 0;
+      const netDiff = cmp.net_variance || 0;
+      const incomeChangePct = cmp.income_change_pct;
+      const expenseChangePct = cmp.expense_change_pct;
+      const incomeChangeText = cmp.income_change_text || '';
+      const expenseChangeText = cmp.expense_change_text || '';
+
+      const compareCard = $('#comparisonCard');
+      const compareStatus = $('#comparisonStatus');
+      compareCard.hidden = false;
+      compareCard.style.display = 'flex';
+
+      const prevIncome = income - incomeDiff;
+      const prevExpense = expense - expenseDiff;
+
+      compareCard.innerHTML = `
+        <span class="compare-icon">⇄</span>
+        <div>
+          <p>SO SÁNG VỚI THÁNG TRƯỚC</p>
+          <small>${prevMonth}</small>
+        </div>
+        <div class="compare-items">
+          <div class="compare-item">
+            <span class="compare-label">Thu nhập</span>
+            <span class="compare-value">${formatMoney(prevIncome)}</span>
+            <span class="compare-change ${incomeDiff >= 0 ? 'up' : 'down'}">${incomeDiff >= 0 ? '+' : ''}${formatMoney(Math.abs(incomeDiff))}</span>
+          </div>
+          <div class="compare-item">
+            <span class="compare-label">Chi tiêu</span>
+            <span class="compare-value">${formatMoney(prevExpense)}</span>
+            <span class="compare-change ${expenseDiff >= 0 ? 'up' : 'down'}">${expenseDiff >= 0 ? '+' : ''}${formatMoney(Math.abs(expenseDiff))}</span>
+          </div>
+          <div class="compare-item">
+            <span class="compare-label">Dòng tiền</span>
+            <span class="compare-value">${netDiff >= 0 ? '+' : '−'}${formatMoney(Math.abs(netDiff))}</span>
+          </div>
+        </div>
+      `;
+      compareStatus.textContent = 'Dòng tiền tháng này ' + (netDiff >= 0 ? 'càng' : 'kém') + (Math.abs(netDiff) > 0 ? ' so với tháng trước' : ' đồng bằng');
+    } else {
+      $('#comparisonCard').hidden = true;
+      $('#comparisonActions').hidden = true;
+    }
+
     const max = Math.max(income, expense);
     $('#incomeBar').style.width = max ? Math.max(income/max*100, income ? 4 : 0) + '%' : '0';
     $('#expenseBar').style.width = max ? Math.max(expense/max*100, expense ? 4 : 0) + '%' : '0';
-    $('#analysisInsight').textContent = !income && !expense ? 'Khi bạn ghi nhận thu chi, các xu hướng trong tháng sẽ được tổng hợp tại đây.' : expense === 0 ? 'Tháng này chưa có khoản chi tiêu nào được ghi nhận.' : income === 0 ? `Khoản chi nhiều nhất hiện tại là ${largest}. Hãy thêm thu nhập để xem đầy đủ dòng tiền.` : income >= expense ? `Thu nhập tháng này cao hơn chi tiêu ${formatMoney(income-expense)}. Bạn đang giữ được dòng tiền dương.` : `Chi tiêu đang cao hơn thu nhập ${formatMoney(expense-income)}. Hãy xem lại nhóm ${largest}.`;
     const ratio = data.summary.income_expense_ratio;
     const savings = data.summary.savings_rate;
+
     const metrics = [
       ['TỔNG TÀI SẢN', formatMoney(data.summary.assets_value), 'Số dư hiện tại, không phải định giá thị trường.'],
       ['TÀI SẢN THANH KHOẢN', formatMoney(data.summary.liquid_assets_value), 'Tài sản có loại được bật tính thanh khoản.'],
@@ -226,6 +282,23 @@
     $('#liabilitiesByType').innerHTML = renderBreakdown(data.summary.liabilities_by_type);
     const totalExpense = categories.reduce((sum, [,amount]) => sum + amount, 0);
     $('#categoryList').innerHTML = categories.length ? categories.map(([name,amount], index) => { const share = totalExpense ? amount/totalExpense : 0; return `<article class="category-row"><div class="category-head"><b>${escapeHtml(name)}</b><b>${formatMoney(amount)}</b></div><div class="category-bottom"><div class="track"><i style="width:${Math.max(share*100,3)}%;background:${index===0?'var(--primary)':'var(--gold)'}"></i></div><small>${Math.round(share*100)}%</small></div></article>`; }).join('') : empty('Chưa đủ dữ liệu phân tích', 'Thêm các khoản thu chi để xem tỷ trọng chi tiêu theo danh mục.');
+    if (categories.length > 1) {
+      const total = categories.reduce((sum, [,amount]) => sum + amount, 0);
+      const stops = categories.map(([name, amount], i) => {
+        const pct = ((amount / total) * 100).toFixed(1);
+        const color = i === 0 ? 'var(--primary)' : 'var(--gold)';
+        return `${color} ${Math.max((i === 0 ? 0 : 0) + (categories.slice(0, i).reduce((s, [,a]) => s + (a / total) * 100, 0)), 0)}% ${Math.max((i === 0 ? 0 : 0) + (categories.slice(0, i).reduce((s, [,a]) => s + (a / total) * 100, 0)), 0) + parseFloat(pct)}%`;
+      }).join(', ');
+      $('#categoryDonut').innerHTML = `
+        <div class="donut-wrap">
+          <div class="donut-center"><b>${formatMoney(total)}</b><small>chi tiêu tháng</small></div>
+          <div style="position:absolute;inset:4px;clip-path:polygon(0 0,100% 0,100% 100%,0 100%);background:conic-gradient(${stops})"></div>
+        </div>
+        <div class="donut-legend">${categories.map(([name, amount], i) => `<div class="legend-item"><span class="swatch" style="background:${i === 0 ? 'var(--primary)' : 'var(--gold)'}"></span>${escapeHtml(name)} <b>${formatMoney(amount)}</b></div>`).join('')}</div>
+      `;
+    } else {
+      $('#categoryDonut').innerHTML = '<p class="hint">Thêm nhiều danh mục để xem biểu đồ phân bổ.</p>';
+    }
   }
 
   function renderCategoryManager() {
@@ -657,23 +730,29 @@
 
   async function loadSpaceData(spaceId, transactionTypeFilter = 'all') {
     const period = reportPeriod();
-    const [transactionPage, recentPage, assets, debts, liquidAssets, categories, financeTypes, movements, summary] = await Promise.all([
-      fetchTransactionPage(spaceId, null, transactionTypeFilter),
-      fetchTransactionPage(spaceId, null, 'all', 4),
-      fetchAccountPage(spaceId, 'asset', null),
-      fetchAccountPage(spaceId, 'liability', null),
-      fetchLiquidAssetPage(spaceId, null),
-      supabaseClient.from('transaction_categories').select('id,type,label,is_archived').eq('space_id', spaceId).order('type').order('label'),
-      supabaseClient.from('space_finance_types').select('id,account_kind,code,label,is_liquid,is_archived').eq('space_id', spaceId).order('account_kind').order('label'),
-      fetchMovementPage(spaceId, null),
-      rpcWithName('get_space_financial_summary_v2', {
-        p_space_id: spaceId,
-        p_month_start: period.start,
-        p_month_end: period.end,
-      }),
-    ]);
-    for (const result of [categories, financeTypes, summary]) if (result.error) throw result.error;
-    const totals = summary.data;
+    const [transactionPage, recentPage, assets, debts, liquidAssets, categories, financeTypes, movements, summaryV2, comparison] = await Promise.all([
+        fetchTransactionPage(spaceId, null, transactionTypeFilter),
+        fetchTransactionPage(spaceId, null, 'all', 4),
+        fetchAccountPage(spaceId, 'asset', null),
+        fetchAccountPage(spaceId, 'liability', null),
+        fetchLiquidAssetPage(spaceId, null),
+        supabaseClient.from('transaction_categories').select('id,type,label,is_archived').eq('space_id', spaceId).order('type').order('label'),
+        supabaseClient.from('space_finance_types').select('id,account_kind,code,label,is_liquid,is_archived').eq('space_id', spaceId).order('account_kind').order('label'),
+        fetchMovementPage(spaceId, null),
+        rpcWithName('get_space_financial_summary_v2', {
+          p_space_id: spaceId,
+          p_month_start: period.start,
+          p_month_end: period.end,
+        }),
+        rpcWithName('get_space_financial_summary_comparison', {
+          p_space_id: spaceId,
+          p_month_start: period.start,
+          p_month_end: period.end,
+        }),
+      ]);
+    for (const result of [categories, financeTypes, summaryV2, comparison]) if (result.error) throw result.error;
+    const totals = summaryV2.data;
+    const cmp = comparison.data || {};
     return {
       transactions: transactionPage.transactions,
       recentTransactions: recentPage.transactions,
@@ -706,6 +785,17 @@
         assets_by_type: (totals.assets_by_type || []).map((item) => ({ ...item, amount: Number(item.amount) })),
         liabilities_by_type: (totals.liabilities_by_type || []).map((item) => ({ ...item, amount: Number(item.amount) })),
         month_categories: totals.month_categories || [],
+      },
+      comparison: {
+        income_variance: Number(cmp.income_variance || 0),
+        expense_variance: Number(cmp.expense_variance || 0),
+        net_variance: Number(cmp.net_variance || 0),
+        income_change_pct: cmp.income_change_pct == null ? null : Number(cmp.income_change_pct),
+        expense_change_pct: cmp.expense_change_pct == null ? null : Number(cmp.expense_change_pct),
+        income_change_text: cmp.income_change_text || '',
+        expense_change_text: cmp.expense_change_text || '',
+        savings_rate: cmp.savings_rate == null ? null : Number(cmp.savings_rate),
+        expense_ratio: cmp.expense_ratio == null ? null : Number(cmp.expense_ratio),
       },
       hasMoreTransactions: transactionPage.hasMore,
       transactionCursor: transactionPage.cursor,
@@ -1646,6 +1736,22 @@
   });
 
   $('#authGateRetry').addEventListener('click', () => { void checkAuthSession(); });
+
+  let currentPeriod = reportPeriod();
+
+  $('#prevMonthBtn').addEventListener('click', () => {
+    const prev = new Date(currentPeriod.start);
+    prev.setMonth(prev.getMonth() - 1);
+    currentPeriod = { start: prev.toISOString(), end: new Date(prev.getFullYear(), prev.getMonth() + 1, 1).toISOString(), label: prev.toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' }) };
+    void loadSpaceData(activeSpace.id, filter);
+  });
+
+  $('#nextMonthBtn').addEventListener('click', () => {
+    const next = new Date(currentPeriod.end);
+    next.setMonth(next.getMonth() + 1);
+    currentPeriod = { start: currentPeriod.end, end: new Date(next.getFullYear(), next.getMonth() + 1, 1).toISOString(), label: next.toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' }) };
+    void loadSpaceData(activeSpace.id, filter);
+  });
 
   updateCategories();
   renderAll();

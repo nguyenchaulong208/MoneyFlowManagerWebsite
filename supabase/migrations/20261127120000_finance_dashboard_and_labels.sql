@@ -110,13 +110,83 @@ begin
 end;
 $$;
 
+create or replace function public.get_space_financial_summary_comparison(
+  p_space_id uuid,
+  p_month_start timestamptz,
+  p_month_end timestamptz
+)
+returns jsonb
+language plpgsql
+stable
+security invoker
+set search_path = ''
+as $$
+declare
+  summary jsonb;
+  prev_summary jsonb;
+  period_income numeric;
+  period_expense numeric;
+  prev_income numeric;
+  prev_expense numeric;
+  prev_start timestamptz;
+  prev_end timestamptz;
+begin
+  summary := public.get_space_financial_summary(p_space_id, p_month_start, p_month_end);
+  prev_start := (p_month_start - interval '1 month')::timestamptz;
+  prev_end := (p_month_end - interval '1 month')::timestamptz;
+  prev_summary := public.get_space_financial_summary(p_space_id, prev_start, prev_end);
+
+  period_income := coalesce((summary->>'month_income')::numeric, 0);
+  period_expense := coalesce((summary->>'month_expense')::numeric, 0);
+  prev_income := coalesce((prev_summary->>'month_income')::numeric, 0);
+  prev_expense := coalesce((prev_summary->>'month_expense')::numeric, 0);
+
+  return jsonb_build_object(
+    'current', summary,
+    'previous', prev_summary,
+    'income_variance', period_income - prev_income,
+    'expense_variance', period_expense - prev_expense,
+    'net_variance', (period_income - period_expense) - (prev_income - prev_expense),
+    'income_change_pct', round((period_income - prev_income) * 100.0 / nullif(prev_income, 0), 1),
+    'expense_change_pct', round((period_expense - prev_expense) * 100.0 / nullif(prev_expense, 0), 1),
+    'income_change_text', format_change_text(period_income, prev_income),
+    'expense_change_text', format_change_text(period_expense, prev_expense),
+    'savings_rate', (period_income - period_expense) / nullif(period_income, 0),
+    'expense_ratio', period_expense / nullif(period_income, 0)
+  );
+end;
+$$;
+
+create or replace function public.format_change_text(p_current numeric, p_previous numeric)
+returns text
+language plpgsql
+stable
+security invoker
+set search_path = ''
+as $$
+begin
+  if p_previous is null or p_previous = 0 then
+    if p_current is null or p_current = 0 then
+      return 'Không thay đổi';
+    end if;
+    return format('+%s so với tháng trước', p_current);
+  end if;
+  if p_current = p_previous then
+    return 'Không thay đổi';
+  end if;
+  return format('%s so với tháng trước (%s)', p_current, case p_current > p_previous then '+' else '' end || to_char((p_current - p_previous) / p_previous * 100, 'FM990.0') || '%');
+end;
+$$;
+
 revoke all on function public.rename_transaction_category(uuid, uuid, text, text) from public, anon;
 revoke all on function public.rename_space_finance_type(uuid, uuid, text) from public, anon;
 revoke all on function public.list_space_liquid_assets(uuid, timestamptz, text, integer) from public, anon;
 revoke all on function public.get_space_financial_summary_v2(uuid, timestamptz, timestamptz) from public, anon;
+revoke all on function public.get_space_financial_summary_comparison(uuid, timestamptz, timestamptz) from public, anon;
 grant execute on function public.rename_transaction_category(uuid, uuid, text, text) to authenticated;
 grant execute on function public.rename_space_finance_type(uuid, uuid, text) to authenticated;
 grant execute on function public.list_space_liquid_assets(uuid, timestamptz, text, integer) to authenticated;
 grant execute on function public.get_space_financial_summary_v2(uuid, timestamptz, timestamptz) to authenticated;
+grant execute on function public.get_space_financial_summary_comparison(uuid, timestamptz, timestamptz) to authenticated;
 
 commit;

@@ -52,52 +52,77 @@
         <div id="storageNotice" class="storage-notice" role="status" hidden></div>
 
         <section class="page active" id="overviewPage" data-page="overview">
-          <header class="page-heading">
-            <div><p class="eyebrow">BỨC TRANH TÀI CHÍNH</p><h1>Tổng quan</h1></div>
-            <span class="date-chip" id="todayLabel"></span>
-          </header>
-          <article class="balance-card">
-            <div class="balance-top">
-              <div><p class="balance-label">TÀI SẢN RÒNG</p><p class="balance-caption">Tổng tài sản sau khi trừ các khoản nợ</p></div>
-              <span class="balance-icon">↗</span>
-            </div>
-            <strong id="netWorth" class="balance-value">0 ₫</strong>
-            <div class="balance-footer">
-              <div><span class="balance-dot"></span><p>Khả dụng</p><strong id="availableValue">0 ₫</strong></div>
-              <div class="balance-divider"></div>
-              <div><span class="balance-dot muted"></span><p>Nợ phải trả</p><strong id="debtValue">0 ₫</strong></div>
-            </div>
-            <span class="balance-orbit orbit-one"></span><span class="balance-orbit orbit-two"></span>
-          </article>
-          <article class="overview-assets-card">
-            <div class="overview-assets-totals">
-              <div><p>TỔNG GIÁ TRỊ TÀI SẢN</p><strong id="overviewAssetTotal">0 ₫</strong></div>
-              <div><p>TÀI SẢN THANH KHOẢN</p><strong id="overviewLiquidTotal">0 ₫</strong></div>
-            </div>
-            <div class="liquid-assets-heading">
-              <div><h2>Tài sản thanh khoản</h2><p>Được xác định theo loại tài sản bạn cấu hình.</p></div>
-              <button class="text-button" id="toggleLiquidAssets" type="button" aria-expanded="false" hidden>Xem thêm</button>
-            </div>
-            <div class="liquid-assets-list" id="liquidAssetsList"></div>
-            <button class="secondary-button load-more-button" id="loadMoreLiquidAssets" type="button" hidden>Tải thêm tài sản thanh khoản</button>
-          </article>
+                   <header class="page-heading">
+                     <div><p class="eyebrow">BỨC TRANH TÀI CHÍNH</p><h1>Tổng quan</h1></div>
+                     <span class="date-chip" id="todayLabel"></span>
+                   </header>
 
-          <div class="section-heading">
-            <div><h2>Dòng tiền tháng này</h2><p id="monthLabel"></p></div>
-            <button class="text-button" data-nav="analysis">Xem báo cáo <span>↗</span></button>
-          </div>
-          <div class="stats-grid">
-            <article class="stat-card income-card"><div class="stat-heading"><span class="stat-icon income">↙</span><span class="stat-trend">THU VÀO</span></div><p>Thu nhập</p><strong id="monthIncome">0 ₫</strong></article>
-            <article class="stat-card expense-card"><div class="stat-heading"><span class="stat-icon expense">↗</span><span class="stat-trend">CHI RA</span></div><p>Chi tiêu</p><strong id="monthExpense">0 ₫</strong></article>
-          </div>
-          <div class="quick-actions">
-            <button class="primary-button" data-open-form="transaction"><span>＋</span> Ghi giao dịch</button>
-            <button class="secondary-button" data-nav="assets"><span>▤</span> Tài sản & nợ</button>
-          </div>
-          <div class="section-heading recent-heading"><div><h2>Giao dịch gần đây</h2><p>Dòng tiền mới nhất của bạn</p></div><button class="text-button" data-nav="transactions">Xem tất cả <span>→</span></button></div>
-          <div class="recent-card" id="recentTransactions"></div>
-          <p class="privacy-note"><span>◉</span><span id="privacyNoteText">Dữ liệu của bạn luôn được giữ riêng tư.</span></p>
-        </section>
+                   <!-- Month at a glance -->
+                   <div class="month-at-a-glance">
+                     <div class="stat-card income-card">
+                       <div class="stat-heading"><span class="stat-icon income">↙</span><span class="stat-trend">THU NHẬP THÁNG</span></div>
+                       <p>Thu nhập</p>
+                       <strong id="monthIncome">0 ₫</strong>
+                     </div>
+                     <div class="stat-card expense-card">
+                       <div class="stat-heading"><span class="stat-icon expense">↗</span><span class="stat-trend">CHI TIÊU THÁNG</span></div>
+                       <p>Chi tiêu</p>
+                       <strong id="monthExpense">0 ₫</strong>
+                     </div>
+                     <div class="stat-card savings-card">
+                       <div class="stat-heading"><span class="stat-icon savings">📊</span><span class="stat-trend">TỶ LỆ TIẾT KIỆM</span></div>
+                       <p>Tiết kiệm</p>
+                       <strong id="savingsRate">0%</strong>
+                       <div class="track" style="margin-top:6px"><i id="savingsBar" style="background: var(--gold)"></i></div>
+                     </div>
+                     <div class="stat-card net-card">
+                       <div class="stat-heading"><span class="stat-icon net">↗</span><span class="stat-trend">DÒNG TIỀN THÁNG</span></div>
+                       <p>Dòng tiền ròng</p>
+                       <strong id="monthNet">0 ₫</strong>
+                     </div>
+                   </div>
+
+                   <article class="balance-card">
+                     <div class="balance-top">
+                       <div><p class="balance-label">TÀI SẢN RÒNG</p><p class="balance-caption">Tổng tài sản sau khi trừ các khoản nợ</p></div>
+                       <span class="balance-icon">↗</span>
+                     </div>
+                     <strong id="netWorth" class="balance-value">0 ₫</strong>
+                     <div class="balance-footer">
+                       <div><span class="balance-dot"></span><p>Khả dụng</p><strong id="availableValue">0 ₫</strong></div>
+                       <div class="balance-divider"></div>
+                       <div><span class="balance-dot muted"></span><p>Nợ phải trả</p><strong id="debtValue">0 ₫</strong></div>
+                     </div>
+                   </article>
+
+                   <article class="overview-assets-card">
+                     <div class="overview-assets-totals">
+                       <div><p>TỔNG GIÁ TRỊ TÀI SẢN</p><strong id="overviewAssetTotal">0 ₫</strong></div>
+                       <div><p>TÀI SẢN THANH KHOẢN</p><strong id="overviewLiquidTotal">0 ₫</strong></div>
+                     </div>
+                     <div class="liquid-assets-heading">
+                       <div><h2>Tài sản thanh khoản</h2><p>Được xác định theo loại tài sản bạn cấu hình.</p></div>
+                       <button class="text-button" id="toggleLiquidAssets" type="button" aria-expanded="false" hidden>Xem thêm</button>
+                     </div>
+                     <div class="liquid-assets-list" id="liquidAssetsList"></div>
+                     <button class="secondary-button load-more-button" id="loadMoreLiquidAssets" type="button" hidden>Tải thêm tài sản thanh khoản</button>
+                   </article>
+
+                   <div class="section-heading">
+                     <div><h2>Dòng tiền tháng này</h2><p id="monthLabel"></p></div>
+                     <button class="text-button" data-nav="analysis">Xem báo cáo <span>↗</span></button>
+                   </div>
+
+                   <div class="recent-wrapper">
+                     <div class="section-heading recent-heading">
+                       <div><h2>Giao dịch gần đây</h2><p>Dòng tiền mới nhất của bạn</p></div>
+                       <button class="text-button" data-nav="transactions">Xem tất cả <span>→</span></button>
+                     </div>
+                     <div class="recent-card" id="recentTransactions"></div>
+                   </div>
+
+                   <p class="privacy-note"><span>◉</span><span id="privacyNoteText">Dữ liệu của bạn luôn được giữ riêng tư.</span></p>
+                 </section>
 
         <section class="page" id="transactionsPage" data-page="transactions">
           <header class="page-heading">
@@ -132,11 +157,26 @@
           <header class="page-heading"><div><p class="eyebrow">BÁO CÁO CÁ NHÂN</p><h1>Phân tích</h1><p class="page-subtitle">Những tín hiệu hữu ích từ thói quen chi tiêu.</p></div></header>
           <article class="period-card"><span>◷</span><div><p>KỲ BÁO CÁO</p><strong id="analysisMonth"></strong><small id="analysisPeriodDescription"></small></div><b class="period-status">THÁNG NÀY</b></article>
           <article class="panel"><div class="panel-title"><h2>Thu và chi</h2><span>₫ VND</span></div><div class="bar-line"><span>Thu nhập</span><strong id="analysisIncome" class="green"></strong></div><div class="track"><i id="incomeBar" class="income-bar"></i></div><div class="bar-line second"><span>Chi tiêu</span><strong id="analysisExpense" class="red"></strong></div><div class="track"><i id="expenseBar" class="expense-bar"></i></div><div class="net-row"><span>Dòng tiền ròng</span><strong id="analysisNet"></strong></div></article>
+          <!-- So sánh với tháng trước -->
+          <article class="period-card" id="comparisonCard" hidden>
+            <span>⇄</span>
+            <div>
+              <p>SO SÁNH VỚI THÁNG TRƯỚC</p>
+              <small id="comparisonMonth"></small>
+            </div>
+            <div class="period-status" id="comparisonStatus"></div>
+          </article>
+          <div class="comparison-actions" id="comparisonActions" hidden>
+            <button id="prevMonthBtn" class="secondary-button small-button" type="button">← Tháng trước</button>
+            <button id="nextMonthBtn" class="secondary-button small-button" type="button">Tháng tiếp theo →</button>
+          </div>
           <div class="report-metrics" id="reportMetrics"></div>
           <h2 class="content-title">Tài sản theo loại</h2><div id="assetsByType"></div>
           <h2 class="content-title">Khoản phải trả theo loại</h2><div id="liabilitiesByType"></div>
           <article class="insight-card"><span class="insight-icon">✦</span><div><h2>Góc nhìn của bạn</h2><p id="analysisInsight"></p><small>Phân tích cơ bản, dựa trên dữ liệu riêng của bạn.</small></div></article>
-          <h2 class="content-title">Chi tiêu theo danh mục</h2><div id="categoryList"></div>
+          <h2 class="content-title">Chi tiêu theo danh mục</h2>
+          <div id="categoryList"></div>
+          <div id="categoryDonut"></div>
         </section>
       </main>
     </div>
