@@ -429,10 +429,21 @@
   }
 
   function rpcWithName(name, args) {
-    return Promise.resolve(supabaseClient.rpc(name, args)).then((result) => ({
-      ...result,
-      error: result.error ? { ...result.error, rpcName: name } : null,
-    }));
+    return Promise.resolve(supabaseClient.rpc(name, args)).then((result) => {
+      return {
+        ...result,
+        error: result.error ? { ...result.error, rpcName: name } : null,
+      };
+    }).catch((error) => {
+      return {
+        data: null,
+        error: {
+          message: error.message || 'RPC failure',
+          code: error.code || 'RPC_ERROR',
+          rpcName: name,
+        },
+      };
+    });
   }
 
   function startupErrorMessage(operation, error) {
@@ -548,8 +559,10 @@
       operation = 'spaces';
       if (!await withStartupTimeout(loadSpaces(generation), operation)) return;
       const savedSpaceId = sessionStorage.getItem('dong-tien-active-space');
-      activeSpace = spaces.find((space) => space.id === savedSpaceId)
+      const savedSpace = spaces.find((space) => space.id === savedSpaceId);
+      activeSpace = savedSpace
         || spaces.find((space) => space.kind === 'personal')
+        || spaces.find((space) => space.owner_id === activeUser.id)
         || spaces[0]
         || null;
       if (!activeSpace) throw new Error('Tài khoản chưa có không gian tài chính. Hãy chạy lại supabase/schema.sql.');
@@ -576,7 +589,7 @@
     const { data: result, error } = await supabaseClient.from('spaces').select('id,name,kind,owner_id').order('created_at');
     if (error) throw error;
     if (generation !== undefined && generation !== authGeneration) return false;
-    spaces = result || [];
+    spaces = result ?? [];
     $('#activeSpaceSelect').innerHTML = spaces.map((space) =>
       `<option value="${escapeHtml(space.id)}">${escapeHtml(space.kind === 'family' ? 'Gia đình · ' : 'Cá nhân · ')}${escapeHtml(space.name)}</option>`
     ).join('');
@@ -639,11 +652,19 @@
     const transactions = [];
     let cursor = null;
     let hasMore = true;
-    while (hasMore) {
-      const page = await fetchTransactionPage(spaceId, cursor, 'all', 100);
-      transactions.push(...page.transactions);
-      hasMore = page.hasMore;
-      cursor = page.cursor;
+    let attempts = 0;
+    const maxAttempts = 100;
+    while (hasMore && attempts < maxAttempts) {
+      try {
+        const page = await fetchTransactionPage(spaceId, cursor, 'all', 100);
+        transactions.push(...page.transactions);
+        hasMore = page.hasMore;
+        cursor = page.cursor;
+        attempts++;
+      } catch (error) {
+        attempts++;
+        if (attempts >= maxAttempts) throw error;
+      }
     }
     return transactions;
   }
@@ -750,8 +771,10 @@
           p_month_end: period.end,
         }),
       ]);
-    for (const result of [categories, financeTypes, summaryV2, comparison]) if (result.error) throw result.error;
-    const totals = summaryV2.data;
+    const results = [transactionPage, recentPage, assets, debts, liquidAssets, categories, financeTypes, movements, summaryV2, comparison];
+    for (const result of results) {
+      if (result?.error) throw result.error;
+    }
     const cmp = comparison.data || {};
     return {
       transactions: transactionPage.transactions,
