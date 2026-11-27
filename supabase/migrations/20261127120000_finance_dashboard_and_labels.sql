@@ -149,8 +149,8 @@ begin
     'net_variance', (period_income - period_expense) - (prev_income - prev_expense),
     'income_change_pct', round((period_income - prev_income) * 100.0 / nullif(prev_income, 0), 1),
     'expense_change_pct', round((period_expense - prev_expense) * 100.0 / nullif(prev_expense, 0), 1),
-    'income_change_text', format_change_text(period_income, prev_income),
-    'expense_change_text', format_change_text(period_expense, prev_expense),
+    'income_change_text', public.format_change_text(period_income, prev_income),
+    'expense_change_text', public.format_change_text(period_expense, prev_expense),
     'savings_rate', (period_income - period_expense) / nullif(period_income, 0),
     'expense_ratio', period_expense / nullif(period_income, 0)
   );

@@ -474,6 +474,12 @@
         : '';
       return `${messages[operation] || 'Không thể khởi động ứng dụng.'} Không tìm thấy RPC ${rpcName} trong schema API (PGRST202).${migrationHint} Nếu hàm đã tồn tại trong database, hãy nạp lại schema cache của PostgREST. Hãy thử lại; dữ liệu đã lưu không bị xóa. (mã ${code})`;
     }
+    if (knownRpc && code) {
+      if (code === '42883' && rpcName === 'get_space_financial_summary_comparison') {
+        return `${messages[operation] || 'Không thể khởi động ứng dụng.'} RPC ${rpcName} gặp lỗi PostgreSQL 42883. Cập nhật schema bằng migration 20261127140000 rồi thử lại; dữ liệu đã lưu không bị xóa.`;
+      }
+      return `${messages[operation] || 'Không thể khởi động ứng dụng.'} RPC ${rpcName} thất bại (mã ${code}). Kiểm tra migration và cấu hình database; dữ liệu đã lưu không bị xóa.`;
+    }
     return `${messages[operation] || 'Không thể khởi động ứng dụng.'}${reason} Hãy thử lại; dữ liệu đã lưu không bị xóa.${code ? ` (mã ${code})` : ''}`;
   }
 

@@ -11,6 +11,7 @@ const movementSql = fs.readFileSync(path.join(migrationDir, '20261127010000_acco
 const reportingSql = fs.readFileSync(path.join(migrationDir, '20261127000000_financial_ledger_reporting.sql'), 'utf8');
 const dashboardSql = fs.readFileSync(path.join(migrationDir, '20261127120000_finance_dashboard_and_labels.sql'), 'utf8');
 const movementFixSql = fs.readFileSync(path.join(migrationDir, '20261127130000_account_movement_leg_cast_fix.sql'), 'utf8');
+const comparisonFixSql = fs.readFileSync(path.join(migrationDir, '20261127140000_fix_comparison_search_path.sql'), 'utf8');
 const rpcDiagnosticsSql = fs.readFileSync(
   path.join(root, 'supabase', 'verification', 'rpc-diagnostics.sql'),
   'utf8',
@@ -468,6 +469,57 @@ test('reporting migration replaces an older transaction RPC return type safely',
        ) as can_execute`,
     );
     assert.equal(privilegeRows[0].can_execute, true);
+  } finally {
+    await db.close();
+  }
+});
+
+test('monthly comparison RPC reproduces and fixes formatter lookup under an empty search_path', async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(`
+      create schema auth;
+      create role anon;
+      create role authenticated;
+      create function auth.uid() returns uuid language sql stable
+        as $$ select '${USER_ID}'::uuid $$;
+      create function public.is_space_member(p_space_id uuid) returns boolean
+        language sql stable as $$ select p_space_id is not null $$;
+      create function public.get_space_financial_summary(
+        p_space_id uuid, p_month_start timestamptz, p_month_end timestamptz
+      ) returns jsonb language sql stable as $$
+        select jsonb_build_object('month_income', 100, 'month_expense', 40)
+      $$;
+    `);
+    const previousFunction = extractFunction(dashboardSql, 'get_space_financial_summary_comparison')
+      .replaceAll('public.format_change_text(', 'format_change_text(');
+    await db.exec(previousFunction);
+    await db.exec(extractFunction(dashboardSql, 'format_change_text'));
+
+    await assert.rejects(
+      db.query(
+        `select public.get_space_financial_summary_comparison($1, $2, $3) as result`,
+        [SPACE_ID, '2026-10-01T00:00:00Z', '2026-11-01T00:00:00Z'],
+      ),
+      (error) => error.code === '42883',
+      'unqualified formatter call under an empty search_path should reproduce SQLSTATE 42883',
+    );
+
+    await db.exec(comparisonFixSql);
+    const { rows } = await db.query(
+      `select public.get_space_financial_summary_comparison($1, $2, $3) as result`,
+      [SPACE_ID, '2026-10-01T00:00:00Z', '2026-11-01T00:00:00Z'],
+    );
+    assert.equal(rows[0].result.income_change_text, 'Không thay đổi');
+    assert.equal(rows[0].result.expense_change_text, 'Không thay đổi');
+    const { rows: privileges } = await db.query(
+      `select has_function_privilege(
+         'authenticated',
+         'public.get_space_financial_summary_comparison(uuid,timestamptz,timestamptz)',
+         'execute'
+       ) as can_execute`,
+    );
+    assert.equal(privileges[0].can_execute, true);
   } finally {
     await db.close();
   }

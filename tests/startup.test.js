@@ -348,6 +348,33 @@ test('PGRST202 identifies the missing startup RPC and required migration without
   assert.equal(app.elements.get('#appContent').hidden, false);
 });
 
+test('startup error identifies the RPC and migration for PostgreSQL 42883', async () => {
+  const app = createHarness({
+    sessions: [Promise.resolve({ data: { session: signedInSession }, error: null })],
+    rpcResults: {
+      get_space_financial_summary_comparison: [
+        Promise.resolve({
+          data: null,
+          error: {
+            code: '42883',
+            message: 'function format_change_text(numeric,numeric) does not exist',
+            details: 'Sensitive SQL detail',
+          },
+        }),
+      ],
+    },
+  });
+  await flushPromises();
+
+  const message = app.elements.get('#authGateMessage').textContent;
+  assert.match(message, /get_space_financial_summary_comparison/);
+  assert.match(message, /42883/);
+  assert.match(message, /20261127140000/);
+  assert.doesNotMatch(message, /Sensitive SQL detail|function format_change_text/);
+  assert.match(JSON.stringify(app.warnings), /get_space_financial_summary_comparison/);
+  assert.doesNotMatch(JSON.stringify(app.warnings), /Sensitive SQL detail|function format_change_text/);
+});
+
 test('an auth event supersedes a delayed stale getSession result', async () => {
   let resolveSession;
   const delayedSession = new Promise((resolve) => { resolveSession = resolve; });
