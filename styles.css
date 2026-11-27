@@ -78,6 +78,18 @@ h2 { color: var(--ink); }
 .balance-orbit { position: absolute; width: 230px; height: 230px; border: 1px solid rgba(255,255,255,.06); border-radius: 50%; }
 .orbit-one { right: -48px; top: -105px; }
 .orbit-two { right: 3px; top: -62px; }
+.overview-assets-card { margin-top: 13px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.overview-assets-totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding-bottom: 13px; border-bottom: 1px solid var(--line); }
+.overview-assets-totals p { margin: 0 0 6px; color: var(--muted); font-size: 8px; font-weight: 750; letter-spacing: .55px; }
+.overview-assets-totals strong { font-size: 14px; }
+.liquid-assets-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 13px 0 8px; }
+.liquid-assets-heading h2 { margin: 0; font-size: 12px; }
+.liquid-assets-heading p { margin: 4px 0 0; color: var(--muted); font-size: 9px; }
+.liquid-assets-list { max-height: 240px; overflow: hidden; }
+.liquid-assets-list.expanded { overflow-y: auto; overscroll-behavior: contain; }
+.liquid-asset-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; padding: 7px 0; border-top: 1px solid #eef0eb; }
+.liquid-asset-row span { min-width: 0; overflow: hidden; color: var(--ink-soft); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.liquid-asset-row strong { font-size: 10px; white-space: nowrap; }
 .section-heading { margin: 29px 0 13px; }
 .section-heading h2 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -.2px; }
 .section-heading p { margin: 5px 0 0; color: var(--muted); font-size: 10px; }
@@ -155,6 +167,7 @@ h2 { color: var(--ink); }
 .metric-card { display: grid; gap: 8px; padding: 13px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); }
 .metric-card small { color: var(--muted); font-size: 8px; font-weight: 750; letter-spacing: .5px; }
 .metric-card b { font-size: 12px; }
+.metric-card span { color: var(--muted); font-size: 9px; line-height: 1.4; }
 .liquid-type-option, .liquid-toggle { display: flex; align-items: center; gap: 6px; color: var(--ink-soft); font-size: 9px; }
 .liquid-type-option input, .liquid-toggle input { width: auto; margin: 0; }
 .member-row .liquid-toggle { white-space: nowrap; }
@@ -163,6 +176,7 @@ h2 { color: var(--ink); }
 .period-card>span { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 13px; background: var(--primary-soft); color: var(--primary); font-size: 17px; }
 .period-card p { margin: 0 0 4px; color: var(--muted); font-size: 8px; font-weight: 700; letter-spacing: 1px; }
 .period-card strong { font-size: 12px; text-transform: capitalize; }
+.period-card small { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
 .period-status { margin-left: auto; padding: 7px 9px; border-radius: 8px; background: #f4f6f2; color: var(--muted); font-size: 8px; letter-spacing: .5px; }
 .panel { margin-top: 13px; padding: 20px; }
 .panel-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
@@ -252,6 +266,10 @@ form input, form select { display: block; width: 100%; height: 46px; margin-top:
 .member-list { display: grid; gap: 6px; }
 .member-row { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
 .member-row>span { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--ink-soft); font-size: 10px; }
+.member-row .manager-label { flex: 1; min-width: 80px; width: 100%; margin: 0; padding: 7px 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink-soft); font-size: 10px; }
+.member-row .manager-type { width: auto; min-width: 86px; margin: 0; padding: 7px; font-size: 9px; }
+#categoryManager .member-row, #financeTypeManager .member-row { flex-wrap: wrap; }
+#categoryManager .manager-label, #financeTypeManager .manager-label { flex-basis: 145px; }
 .member-row small { color: var(--muted); font-size: 9px; }
 .member-row button { padding: 6px 8px; border: 0; border-radius: 8px; background: var(--danger-soft); color: var(--danger); font-size: 9px; }
 .row-actions { display: flex; flex: 0 0 auto; gap: 5px; margin-left: 8px; }

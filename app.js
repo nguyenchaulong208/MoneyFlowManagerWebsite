@@ -2,17 +2,18 @@
   const STORAGE_KEY = 'dong-tien-finance-v1';
   const emptySummary = () => ({
     transaction_count: 0, income_count: 0, expense_count: 0,
-    total_income: 0, total_expense: 0, month_income: 0, month_expense: 0,
-    assets_value: 0, cash_value: 0, debts_value: 0, liabilities_value: 0,
+    total_income: 0, total_expense: 0, month_income: 0, month_expense: 0, month_net_cash_flow: 0,
+    assets_value: 0, cash_value: 0, liquid_assets_value: 0, debts_value: 0, liabilities_value: 0,
     net_worth: 0, income_expense_ratio: null, savings_rate: null,
     monthly_debt_repayments: 0, monthly_borrowing: 0, monthly_asset_purchases: 0,
     assets_by_type: [], liabilities_by_type: [], month_categories: [],
   });
   const emptyData = () => ({
-    transactions: [], recentTransactions: [], assets: [], debts: [], categories: [], financeTypes: [], movements: [],
+    transactions: [], recentTransactions: [], assets: [], debts: [], liquidAssets: [], categories: [], financeTypes: [], movements: [],
     summary: emptySummary(), hasMoreTransactions: false, transactionCursor: null,
     hasMoreAssets: false, assetCursor: null, hasMoreDebts: false, debtCursor: null,
     hasMoreMovements: false, movementCursor: null,
+    hasMoreLiquidAssets: false, liquidAssetCursor: null,
   });
   const STARTUP_TIMEOUT_MS = 15000;
   let data = emptyData();
@@ -21,6 +22,7 @@
   let transactionType = 'expense';
   let activeUser = null;
   let activeSpace = null;
+  let liquidAssetsExpanded = false;
   let spaces = [];
   let editingItem = null;
   let authLoading = true;
@@ -131,6 +133,18 @@
     $('#netWorth').textContent = formatMoney(t.netWorth);
     $('#availableValue').textContent = formatMoney(t.available);
     $('#debtValue').textContent = formatMoney(t.debtsValue);
+    $('#overviewAssetTotal').textContent = formatMoney(t.assetsValue);
+    $('#overviewLiquidTotal').textContent = formatMoney(data.summary.liquid_assets_value);
+    const liquidList = $('#liquidAssetsList');
+    liquidList.classList.toggle('expanded', liquidAssetsExpanded);
+    liquidList.innerHTML = data.liquidAssets.length
+      ? data.liquidAssets.map((asset) => `<div class="liquid-asset-row"><span>${escapeHtml(asset.name)} · ${escapeHtml(asset.account_type_label)}</span><strong>${formatMoney(asset.value)}</strong></div>`).join('')
+      : '<p class="hint">Chưa có tài sản thuộc loại thanh khoản.</p>';
+    const toggleLiquidAssets = $('#toggleLiquidAssets');
+    toggleLiquidAssets.hidden = !data.hasMoreLiquidAssets && !liquidAssetsExpanded;
+    toggleLiquidAssets.textContent = liquidAssetsExpanded ? 'Thu gọn' : 'Xem thêm';
+    toggleLiquidAssets.ariaExpanded = String(liquidAssetsExpanded);
+    $('#loadMoreLiquidAssets').hidden = !liquidAssetsExpanded || !data.hasMoreLiquidAssets;
     $('#monthLabel').textContent = new Intl.DateTimeFormat('vi-VN', { month: 'long', year: 'numeric' }).format(now);
     $('#todayLabel').textContent = new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: 'numeric', month: 'long' }).format(now);
     $('#monthIncome').textContent = compactMoney(data.summary.month_income);
@@ -173,16 +187,19 @@
 
   function renderAnalysis() {
     const now = new Date();
+    const period = reportPeriod();
     const income = data.summary.month_income;
     const expense = data.summary.month_expense;
+    const netCashFlow = data.summary.month_net_cash_flow;
     const categories = data.summary.month_categories.map((item) => [item.category, Number(item.amount)]);
     const month = new Intl.DateTimeFormat('vi-VN', { month:'long', year:'numeric' }).format(now);
     const largest = categories[0]?.[0] || '—';
     $('#analysisMonth').textContent = month;
+    $('#analysisPeriodDescription').textContent = period.label;
     $('#analysisIncome').textContent = formatMoney(income);
     $('#analysisExpense').textContent = formatMoney(expense);
-    $('#analysisNet').textContent = (income-expense >= 0 ? '+' : '−') + formatMoney(Math.abs(income-expense));
-    $('#analysisNet').style.color = income-expense >= 0 ? 'var(--primary)' : 'var(--danger)';
+    $('#analysisNet').textContent = (netCashFlow >= 0 ? '+' : '−') + formatMoney(Math.abs(netCashFlow));
+    $('#analysisNet').style.color = netCashFlow >= 0 ? 'var(--primary)' : 'var(--danger)';
     const max = Math.max(income, expense);
     $('#incomeBar').style.width = max ? Math.max(income/max*100, income ? 4 : 0) + '%' : '0';
     $('#expenseBar').style.width = max ? Math.max(expense/max*100, expense ? 4 : 0) + '%' : '0';
@@ -190,13 +207,20 @@
     const ratio = data.summary.income_expense_ratio;
     const savings = data.summary.savings_rate;
     const metrics = [
-      ['TỶ LỆ CHI / THU', ratio == null ? '—' : `${(Number(ratio) * 100).toFixed(1)}%`],
-      ['TỶ LỆ TIẾT KIỆM', savings == null ? '—' : `${(Number(savings) * 100).toFixed(1)}%`],
-      ['TRẢ NỢ THÁNG NÀY', formatMoney(data.summary.monthly_debt_repayments)],
-      ['VAY MỚI THÁNG NÀY', formatMoney(data.summary.monthly_borrowing)],
-      ['MUA TÀI SẢN THÁNG NÀY', formatMoney(data.summary.monthly_asset_purchases)],
+      ['TỔNG TÀI SẢN', formatMoney(data.summary.assets_value), 'Số dư hiện tại, không phải định giá thị trường.'],
+      ['TÀI SẢN THANH KHOẢN', formatMoney(data.summary.liquid_assets_value), 'Tài sản có loại được bật tính thanh khoản.'],
+      ['TỔNG NỢ', formatMoney(data.summary.debts_value), 'Dư nợ hiện tại của các khoản đang hoạt động.'],
+      ['TÀI SẢN RÒNG', formatMoney(data.summary.net_worth), 'Tổng tài sản hiện tại trừ tổng nợ.'],
+      ['THU NHẬP TRONG KỲ', formatMoney(income), 'Tổng giao dịch thu trong kỳ báo cáo.'],
+      ['CHI TIÊU TRONG KỲ', formatMoney(expense), 'Tổng giao dịch chi trong kỳ báo cáo.'],
+      ['DÒNG TIỀN RÒNG', (netCashFlow >= 0 ? '+' : '−') + formatMoney(Math.abs(netCashFlow)), 'Thu nhập trong kỳ trừ chi tiêu trong kỳ.'],
+      ['TỶ LỆ CHI / THU', ratio == null ? '—' : `${(Number(ratio) * 100).toFixed(1)}%`, 'Chi tiêu trong kỳ ÷ thu nhập trong kỳ; — khi chưa có thu nhập.'],
+      ['TỶ LỆ TIẾT KIỆM', savings == null ? '—' : `${(Number(savings) * 100).toFixed(1)}%`, 'Dòng tiền ròng trong kỳ ÷ thu nhập trong kỳ; — khi chưa có thu nhập.'],
+      ['TRẢ NỢ TRONG KỲ', formatMoney(data.summary.monthly_debt_repayments), 'Tổng các khoản trả nợ được ghi nhận trong kỳ.'],
+      ['VAY MỚI TRONG KỲ', formatMoney(data.summary.monthly_borrowing), 'Tổng các khoản vay mới được ghi nhận trong kỳ.'],
+      ['MUA TÀI SẢN TRONG KỲ', formatMoney(data.summary.monthly_asset_purchases), 'Tổng giá trị mua tài sản được ghi nhận trong kỳ.'],
     ];
-    $('#reportMetrics').innerHTML = metrics.map(([label, value]) => `<article class="metric-card"><small>${label}</small><b>${value}</b></article>`).join('');
+    $('#reportMetrics').innerHTML = metrics.map(([label, value, formula]) => `<article class="metric-card"><small>${label}</small><b>${value}</b><span>${formula}</span></article>`).join('');
     const renderBreakdown = (items) => items.length ? items.map((item) => `<div class="category-row"><div class="category-head"><b>${escapeHtml(item.type)}</b><b>${formatMoney(Number(item.amount))}</b></div></div>`).join('') : '<p class="hint">Chưa có dữ liệu.</p>';
     $('#assetsByType').innerHTML = renderBreakdown(data.summary.assets_by_type);
     $('#liabilitiesByType').innerHTML = renderBreakdown(data.summary.liabilities_by_type);
@@ -206,16 +230,22 @@
 
   function renderCategoryManager() {
     $('#categoryManager').innerHTML = data.categories.map((category) => `<div class="member-row">
-      <span>${escapeHtml(category.label)}</span><small>${category.type === 'income' ? 'Thu nhập' : 'Chi tiêu'}${category.is_archived ? ' · Đã lưu trữ' : ''}</small>
-      ${category.is_archived ? '' : `<button type="button" data-archive-category="${escapeHtml(category.id)}">Lưu trữ</button>`}
+      <input class="manager-label" data-category-label="${escapeHtml(category.id)}" value="${escapeHtml(category.label)}" maxlength="60" aria-label="Tên danh mục" ${category.is_archived ? 'disabled' : ''} />
+      <select class="manager-type" data-category-type="${escapeHtml(category.id)}" aria-label="Loại danh mục" ${category.is_archived ? 'disabled' : ''}>
+        <option value="expense" ${category.type === 'expense' ? 'selected' : ''}>Chi tiêu</option>
+        <option value="income" ${category.type === 'income' ? 'selected' : ''}>Thu nhập</option>
+      </select>
+      ${category.is_archived ? '<small>Đã lưu trữ</small>' : ''}
+      ${category.is_archived ? '' : `<button type="button" data-save-category="${escapeHtml(category.id)}">Lưu thay đổi</button><button type="button" data-archive-category="${escapeHtml(category.id)}">Lưu trữ</button>`}
     </div>`).join('') || '<p class="hint">Chưa có danh mục.</p>';
   }
 
   function renderFinanceTypeManager() {
     $('#financeTypeManager').innerHTML = data.financeTypes.map((type) => `<div class="member-row">
-      <span>${escapeHtml(type.label)}</span><small>${type.account_kind === 'asset' ? 'Tài sản' : 'Khoản phải trả'}${type.is_liquid ? ' · Thanh khoản' : ''}${type.is_archived ? ' · Đã lưu trữ' : ''}</small>
+      <input class="manager-label" data-finance-type-label="${escapeHtml(type.id)}" value="${escapeHtml(type.label)}" maxlength="60" aria-label="Tên loại tài khoản" ${type.is_archived ? 'disabled' : ''} />
+      <small>${type.account_kind === 'asset' ? 'Tài sản' : 'Khoản phải trả'}${type.is_liquid ? ' · Thanh khoản' : ''}${type.is_archived ? ' · Đã lưu trữ' : ''}</small>
       ${type.account_kind === 'asset' && !type.is_archived ? `<label class="liquid-toggle"><input type="checkbox" data-finance-type-liquid="${escapeHtml(type.id)}" ${type.is_liquid ? 'checked' : ''} /> Thanh khoản</label>` : ''}
-      ${type.is_archived ? '' : `<button type="button" data-archive-finance-type="${escapeHtml(type.id)}">Lưu trữ</button>`}
+      ${type.is_archived ? '' : `<button type="button" data-save-finance-type="${escapeHtml(type.id)}">Lưu thay đổi</button><button type="button" data-archive-finance-type="${escapeHtml(type.id)}">Lưu trữ</button>`}
     </div>`).join('') || '<p class="hint">Chưa có loại tài khoản.</p>';
   }
 
@@ -459,9 +489,13 @@
 
   function reportPeriod() {
     const now = new Date();
+    const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const dateFormatter = new Intl.DateTimeFormat('vi-VN', { day: 'numeric', month: 'long', year: 'numeric' });
     return {
-      start: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
+      start: startDate.toISOString(),
       end: new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString(),
+      label: `${dateFormatter.format(startDate)} – ${dateFormatter.format(endDate)}`,
     };
   }
 
@@ -535,6 +569,20 @@
     return { items, hasMore, cursor: hasMore && last ? { createdAt: last.created_at, id: last.id } : null };
   }
 
+  async function fetchLiquidAssetPage(spaceId, cursor, limit = 4) {
+    const { data: result, error } = await supabaseClient.rpc('list_space_liquid_assets', {
+      p_space_id: spaceId,
+      p_before_created_at: cursor?.createdAt || null,
+      p_before_id: cursor?.id || null,
+      p_limit: limit + 1,
+    });
+    if (error) throw error;
+    const hasMore = result.length > limit;
+    const items = result.slice(0, limit).map((item) => ({ ...item, value: Number(item.value) }));
+    const last = items[items.length - 1];
+    return { items, hasMore, cursor: hasMore && last ? { createdAt: last.created_at, id: last.id } : null };
+  }
+
   async function fetchAllAccounts(spaceId, kind, includeArchived = false) {
     const items = [];
     let cursor = null;
@@ -585,16 +633,16 @@
 
   async function loadSpaceData(spaceId, transactionTypeFilter = 'all') {
     const period = reportPeriod();
-    const transactionPageRequest = fetchTransactionPage(spaceId, null, transactionTypeFilter);
-    const [transactionPage, recentPage, assets, debts, categories, financeTypes, movements, summary] = await Promise.all([
-      transactionPageRequest,
-      transactionTypeFilter === 'all' ? transactionPageRequest : fetchTransactionPage(spaceId, null, 'all'),
+    const [transactionPage, recentPage, assets, debts, liquidAssets, categories, financeTypes, movements, summary] = await Promise.all([
+      fetchTransactionPage(spaceId, null, transactionTypeFilter),
+      fetchTransactionPage(spaceId, null, 'all', 4),
       fetchAccountPage(spaceId, 'asset', null),
       fetchAccountPage(spaceId, 'liability', null),
+      fetchLiquidAssetPage(spaceId, null),
       supabaseClient.from('transaction_categories').select('id,type,label,is_archived').eq('space_id', spaceId).order('type').order('label'),
       supabaseClient.from('space_finance_types').select('id,account_kind,code,label,is_liquid,is_archived').eq('space_id', spaceId).order('account_kind').order('label'),
       fetchMovementPage(spaceId, null),
-      supabaseClient.rpc('get_space_financial_summary', {
+      supabaseClient.rpc('get_space_financial_summary_v2', {
         p_space_id: spaceId,
         p_month_start: period.start,
         p_month_end: period.end,
@@ -607,6 +655,7 @@
       recentTransactions: recentPage.transactions,
       assets: assets.items,
       debts: debts.items,
+      liquidAssets: liquidAssets.items,
       categories: categories.data || [],
       financeTypes: financeTypes.data || [],
       movements: movements.movements,
@@ -618,8 +667,10 @@
         total_expense: Number(totals.total_expense),
         month_income: Number(totals.month_income),
         month_expense: Number(totals.month_expense),
+        month_net_cash_flow: Number(totals.month_net_cash_flow ?? Number(totals.month_income) - Number(totals.month_expense)),
         assets_value: Number(totals.assets_value),
         cash_value: Number(totals.cash_value),
+        liquid_assets_value: Number(totals.liquid_assets_value ?? totals.cash_value),
         debts_value: Number(totals.debts_value ?? totals.liabilities_value),
         liabilities_value: Number(totals.liabilities_value ?? totals.debts_value),
         net_worth: Number(totals.net_worth),
@@ -640,6 +691,8 @@
       debtCursor: debts.cursor,
       hasMoreMovements: movements.hasMore,
       movementCursor: movements.cursor,
+      hasMoreLiquidAssets: liquidAssets.hasMore,
+      liquidAssetCursor: liquidAssets.cursor,
     };
   }
 
@@ -740,6 +793,7 @@
     authLoading = true;
     activeSpace = nextSpace;
     data = emptyData();
+    liquidAssetsExpanded = false;
     renderConnection();
     renderAll();
     let operation = 'data';
@@ -765,6 +819,7 @@
     authLoading = true;
     activeSpace = null;
     data = emptyData();
+    liquidAssetsExpanded = false;
     renderConnection();
     renderAll();
     let operation = 'spaces';
@@ -1061,6 +1116,26 @@
   }
   $('#loadMoreAssets').addEventListener('click', () => void loadMoreAccounts('asset'));
   $('#loadMoreDebts').addEventListener('click', () => void loadMoreAccounts('liability'));
+  $('#toggleLiquidAssets').addEventListener('click', () => {
+    liquidAssetsExpanded = !liquidAssetsExpanded;
+    renderOverview();
+  });
+  $('#loadMoreLiquidAssets').addEventListener('click', async () => {
+    if (!activeSpace || !data.liquidAssetCursor || !data.hasMoreLiquidAssets) return;
+    const button = $('#loadMoreLiquidAssets');
+    button.disabled = true;
+    try {
+      const page = await fetchLiquidAssetPage(activeSpace.id, data.liquidAssetCursor);
+      data.liquidAssets.push(...page.items);
+      data.hasMoreLiquidAssets = page.hasMore;
+      data.liquidAssetCursor = page.cursor;
+      renderOverview();
+    } catch (error) {
+      setCloudStatus(`Không thể tải thêm tài sản thanh khoản: ${error.message}`, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
   $('#loadMoreMovements').addEventListener('click', async () => {
     if (!activeSpace || !data.movementCursor || !data.hasMoreMovements) return;
     const button = $('#loadMoreMovements');
@@ -1088,28 +1163,6 @@
         p_type: $('#categoryTypeInput').value,
         p_label: label,
       });
-
-      $('#financeTypeForm').addEventListener('submit', async (event) => {
-        event.preventDefault();
-        $('#financeTypeError').hidden = true;
-        try {
-          const kind = $('#financeTypeKindInput').value;
-          const label = $('#financeTypeLabelInput').value.trim();
-          const isLiquid = kind === 'asset' && $('#financeTypeLiquidInput').checked;
-          const { data: id, error } = await supabaseClient.rpc('create_space_finance_type', {
-            p_space_id: activeSpace.id, p_account_kind: kind, p_label: label, p_is_liquid: isLiquid,
-          });
-          if (error) throw error;
-          data.financeTypes.push({ id, account_kind: kind, code: `custom-${id}`, label, is_liquid: isLiquid, is_archived: false });
-          $('#financeTypeLabelInput').value = '';
-          $('#financeTypeLiquidInput').checked = false;
-          updateAccountTypeOptions();
-          renderFinanceTypeManager();
-        } catch (error) {
-          $('#financeTypeError').textContent = `Không thể thêm loại tài khoản: ${error.message}`;
-          $('#financeTypeError').hidden = false;
-        }
-      });
       if (error) throw error;
       data.categories.push({ id, type: $('#categoryTypeInput').value, label, is_archived: false });
       $('#categoryNameInput').value = '';
@@ -1121,8 +1174,32 @@
     }
   });
 
+  $('#financeTypeForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    $('#financeTypeError').hidden = true;
+    try {
+      const kind = $('#financeTypeKindInput').value;
+      const label = $('#financeTypeLabelInput').value.trim();
+      const isLiquid = kind === 'asset' && $('#financeTypeLiquidInput').checked;
+      const { data: id, error } = await supabaseClient.rpc('create_space_finance_type', {
+        p_space_id: activeSpace.id, p_account_kind: kind, p_label: label, p_is_liquid: isLiquid,
+      });
+      if (error) throw error;
+      data.financeTypes.push({ id, account_kind: kind, code: `custom-${id}`, label, is_liquid: isLiquid, is_archived: false });
+      $('#financeTypeLabelInput').value = '';
+      $('#financeTypeLiquidInput').checked = false;
+      updateAccountTypeOptions();
+      renderFinanceTypeManager();
+    } catch (error) {
+      $('#financeTypeError').textContent = `Không thể thêm loại tài khoản: ${error.message}`;
+      $('#financeTypeError').hidden = false;
+    }
+  });
+
   document.addEventListener('click', (event) => {
     const edit = event.target.closest('[data-edit-kind]');
+    const saveCategory = event.target.closest('[data-save-category]');
+    const saveFinanceType = event.target.closest('[data-save-finance-type]');
     const transaction = event.target.closest('[data-delete-transaction]');
     const asset = event.target.closest('[data-delete-asset]');
     const debt = event.target.closest('[data-delete-debt]');
@@ -1132,6 +1209,53 @@
     const archiveCategory = event.target.closest('[data-archive-category]');
     const archiveFinanceType = event.target.closest('[data-archive-finance-type]');
     if (edit) editItem(edit.dataset.editKind, edit.dataset.editId);
+    else if (saveCategory) void (async () => {
+      $('#categoryError').hidden = true;
+      try {
+        const category = data.categories.find((item) => item.id === saveCategory.dataset.saveCategory);
+        const row = saveCategory.closest('.member-row');
+        const label = row.querySelector('[data-category-label]').value.trim();
+        const type = row.querySelector('[data-category-type]').value;
+        const { error } = await supabaseClient.rpc('rename_transaction_category', {
+          p_space_id: activeSpace.id, p_category_id: category.id, p_type: type, p_label: label,
+        });
+        if (error) throw error;
+        category.label = label;
+        category.type = type;
+        updateCategories();
+        renderCategoryManager();
+      } catch (error) {
+        $('#categoryError').textContent = `Không thể cập nhật danh mục: ${error.message}`;
+        $('#categoryError').hidden = false;
+      }
+    })();
+    else if (saveFinanceType) void (async () => {
+      $('#financeTypeError').hidden = true;
+      try {
+        const financeType = data.financeTypes.find((item) => item.id === saveFinanceType.dataset.saveFinanceType);
+        const label = saveFinanceType.closest('.member-row').querySelector('[data-finance-type-label]').value.trim();
+        const { error } = await supabaseClient.rpc('rename_space_finance_type', {
+          p_space_id: activeSpace.id, p_type_id: financeType.id, p_label: label,
+        });
+        if (error) throw error;
+        financeType.label = label;
+        data.assets.forEach((asset) => {
+          if (asset.accountTypeId === financeType.id) asset.account_type_label = label;
+        });
+        data.debts.forEach((debt) => {
+          if (debt.accountTypeId === financeType.id) debt.account_type_label = label;
+        });
+        data.liquidAssets.forEach((asset) => {
+          if (asset.account_type_id === financeType.id) asset.account_type_label = label;
+        });
+        updateAccountTypeOptions();
+        renderFinanceTypeManager();
+        renderAll();
+      } catch (error) {
+        $('#financeTypeError').textContent = `Không thể cập nhật loại tài khoản: ${error.message}`;
+        $('#financeTypeError').hidden = false;
+      }
+    })();
     else if (transaction) void deleteBy(transaction.dataset.deleteTransaction, 'transaction');
     else if (asset) void deleteBy(asset.dataset.deleteAsset, 'asset');
     else if (debt) void deleteBy(debt.dataset.deleteDebt, 'debt');
@@ -1194,18 +1318,40 @@
     if (!toggle) return;
     void (async () => {
       $('#financeTypeError').hidden = true;
+      let saved = false;
       try {
         const { error } = await supabaseClient.rpc('set_space_finance_type_liquidity', {
           p_space_id: activeSpace.id, p_type_id: toggle.dataset.financeTypeLiquid, p_is_liquid: toggle.checked,
         });
         if (error) throw error;
+        saved = true;
         const financeType = data.financeTypes.find((item) => item.id === toggle.dataset.financeTypeLiquid);
         if (financeType) financeType.is_liquid = toggle.checked;
-        renderFinanceTypeManager();
+        const period = reportPeriod();
+        const [summary, liquidAssets] = await Promise.all([
+          supabaseClient.rpc('get_space_financial_summary_v2', {
+            p_space_id: activeSpace.id, p_month_start: period.start, p_month_end: period.end,
+          }),
+          fetchLiquidAssetPage(activeSpace.id, null),
+        ]);
+        if (summary.error) throw summary.error;
+        data.summary.cash_value = Number(summary.data.cash_value);
+        data.summary.liquid_assets_value = Number(summary.data.liquid_assets_value ?? summary.data.cash_value);
+        data.liquidAssets = liquidAssets.items;
+        data.hasMoreLiquidAssets = liquidAssets.hasMore;
+        data.liquidAssetCursor = liquidAssets.cursor;
+        data.assets.forEach((asset) => {
+          asset.is_liquid = data.financeTypes.find((type) => type.id === asset.accountTypeId)?.is_liquid || false;
+        });
+        renderAll();
       } catch (error) {
-        toggle.checked = !toggle.checked;
-        $('#financeTypeError').textContent = `Không thể thay đổi tính thanh khoản: ${error.message}`;
-        $('#financeTypeError').hidden = false;
+        if (saved) {
+          setCloudStatus(`Đã lưu thay đổi thanh khoản nhưng không thể làm mới tổng quan: ${error.message}`, true);
+        } else {
+          toggle.checked = !toggle.checked;
+          $('#financeTypeError').textContent = `Không thể thay đổi tính thanh khoản: ${error.message}`;
+          $('#financeTypeError').hidden = false;
+        }
       }
     })();
   });

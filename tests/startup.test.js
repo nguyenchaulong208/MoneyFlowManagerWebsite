@@ -11,7 +11,7 @@ const emptyResult = { data: [], error: null };
 const summaryResult = {
   data: {
     transaction_count: 0, income_count: 0, expense_count: 0,
-    total_income: 0, total_expense: 0, month_income: 0, month_expense: 0,
+    total_income: 0, total_expense: 0, month_income: 0, month_expense: 0, month_net_cash_flow: 0,
     assets_value: 0, cash_value: 0, debts_value: 0, liabilities_value: 0,
     net_worth: 0, income_expense_ratio: null, savings_rate: null,
     monthly_debt_repayments: 0, monthly_borrowing: 0, monthly_asset_purchases: 0,
@@ -81,7 +81,7 @@ function createHarness({ sessions = [], spaceResults = [], rpcResults = {} } = {
     rpc(name) {
       rpcCallCount += 1;
       const queue = rpcResults[name] || [];
-      const fallback = name === 'get_space_financial_summary' ? summaryResult : emptyResult;
+      const fallback = name === 'get_space_financial_summary_v2' ? summaryResult : emptyResult;
       return next(queue, fallback);
     },
   };
@@ -265,7 +265,7 @@ test('switching spaces cannot leave the auth gate loading forever', async () => 
       { data: [personal, family], error: null },
     ],
     rpcResults: {
-      list_space_transactions: [emptyResult, never(), emptyResult],
+      list_space_transactions: [emptyResult, emptyResult, emptyResult, never(), emptyResult],
     },
   });
   await flushPromises();

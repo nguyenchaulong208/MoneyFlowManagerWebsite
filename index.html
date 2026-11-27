@@ -69,6 +69,18 @@
             </div>
             <span class="balance-orbit orbit-one"></span><span class="balance-orbit orbit-two"></span>
           </article>
+          <article class="overview-assets-card">
+            <div class="overview-assets-totals">
+              <div><p>TỔNG GIÁ TRỊ TÀI SẢN</p><strong id="overviewAssetTotal">0 ₫</strong></div>
+              <div><p>TÀI SẢN THANH KHOẢN</p><strong id="overviewLiquidTotal">0 ₫</strong></div>
+            </div>
+            <div class="liquid-assets-heading">
+              <div><h2>Tài sản thanh khoản</h2><p>Được xác định theo loại tài sản bạn cấu hình.</p></div>
+              <button class="text-button" id="toggleLiquidAssets" type="button" aria-expanded="false" hidden>Xem thêm</button>
+            </div>
+            <div class="liquid-assets-list" id="liquidAssetsList"></div>
+            <button class="secondary-button load-more-button" id="loadMoreLiquidAssets" type="button" hidden>Tải thêm tài sản thanh khoản</button>
+          </article>
 
           <div class="section-heading">
             <div><h2>Dòng tiền tháng này</h2><p id="monthLabel"></p></div>
@@ -118,7 +130,7 @@
 
         <section class="page" id="analysisPage" data-page="analysis">
           <header class="page-heading"><div><p class="eyebrow">BÁO CÁO CÁ NHÂN</p><h1>Phân tích</h1><p class="page-subtitle">Những tín hiệu hữu ích từ thói quen chi tiêu.</p></div></header>
-          <article class="period-card"><span>◷</span><div><p>KỲ BÁO CÁO</p><strong id="analysisMonth"></strong></div><b class="period-status">THÁNG NÀY</b></article>
+          <article class="period-card"><span>◷</span><div><p>KỲ BÁO CÁO</p><strong id="analysisMonth"></strong><small id="analysisPeriodDescription"></small></div><b class="period-status">THÁNG NÀY</b></article>
           <article class="panel"><div class="panel-title"><h2>Thu và chi</h2><span>₫ VND</span></div><div class="bar-line"><span>Thu nhập</span><strong id="analysisIncome" class="green"></strong></div><div class="track"><i id="incomeBar" class="income-bar"></i></div><div class="bar-line second"><span>Chi tiêu</span><strong id="analysisExpense" class="red"></strong></div><div class="track"><i id="expenseBar" class="expense-bar"></i></div><div class="net-row"><span>Dòng tiền ròng</span><strong id="analysisNet"></strong></div></article>
           <div class="report-metrics" id="reportMetrics"></div>
           <h2 class="content-title">Tài sản theo loại</h2><div id="assetsByType"></div>
