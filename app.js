@@ -28,6 +28,8 @@
   let authLoading = true;
   let loadingUserId = null;
   let authGeneration = 0;
+  let spaceSwitchGeneration = 0;
+  let switchingSpace = false;
   let authStateRevision = 0;
   let sessionCheckGeneration = 0;
   let supabaseClient = null;
@@ -400,6 +402,9 @@
     } else if (!configured) {
       $('#authGateTitle').textContent = 'Cần kết nối Supabase';
       $('#authGateMessage').textContent = 'Thiết lập URL và public key của Supabase để đăng nhập. Dữ liệu tài chính không được mở ở chế độ chưa xác thực.';
+    } else if (switchingSpace) {
+      $('#authGateTitle').textContent = 'Đang chuyển không gian tài chính…';
+      $('#authGateMessage').textContent = 'Đang tải dữ liệu cho không gian đã chọn. Không gian hiện tại sẽ được giữ nếu không thể hoàn tất.';
     } else if (authLoading) {
       $('#authGateTitle').textContent = 'Đang kiểm tra phiên đăng nhập…';
       $('#authGateMessage').textContent = 'Dữ liệu tài chính chỉ hiển thị sau khi phiên đăng nhập được xác nhận.';
@@ -570,6 +575,8 @@
     const previousUserId = activeUser?.id || null;
     activeUser = session?.user || null;
     if (!activeUser) {
+      spaceSwitchGeneration += 1;
+      switchingSpace = false;
       authGeneration += 1;
       loadingUserId = null;
       authGateError = '';
@@ -580,6 +587,10 @@
       renderConnection();
       renderAll();
       return;
+    }
+    if (previousUserId && previousUserId !== activeUser.id) {
+      spaceSwitchGeneration += 1;
+      switchingSpace = false;
     }
     if (previousUserId === activeUser.id && activeSpace) return;
     if (loadingUserId === activeUser.id) return;
@@ -967,22 +978,24 @@
   }
 
   async function renderFamilyManagement() {
+    const space = activeSpace;
     $('#familyControls').hidden = !activeUser;
-    $('#spaceManagement').hidden = !activeSpace || activeSpace.kind !== 'family';
+    $('#spaceManagement').hidden = !space || space.kind !== 'family';
     $('#familyError').hidden = true;
     $('#inviteError').hidden = true;
-    if (!activeSpace || activeSpace.kind !== 'family') return;
+    if (!space || space.kind !== 'family') return;
 
-    $('#familySpaceTitle').textContent = activeSpace.name;
-    $('#deleteFamilySpace').hidden = activeSpace.owner_id !== activeUser.id;
+    $('#familySpaceTitle').textContent = space.name;
     const [{ data: members, error: membersError }, { data: ownMembership, error: ownError }] = await Promise.all([
-      supabaseClient.from('space_members').select('user_id,member_email,role').eq('space_id', activeSpace.id).order('created_at'),
-      supabaseClient.from('space_members').select('role').eq('space_id', activeSpace.id).eq('user_id', activeUser.id).single(),
+      supabaseClient.from('space_members').select('user_id,member_email,role').eq('space_id', space.id).order('created_at'),
+      supabaseClient.from('space_members').select('role').eq('space_id', space.id).eq('user_id', activeUser.id).single(),
     ]);
     if (membersError) throw membersError;
     if (ownError) throw ownError;
+    if (activeSpace?.id !== space.id) return;
+    $('#deleteFamilySpace').hidden = space.owner_id !== activeUser.id;
     const canManage = ['owner', 'admin'].includes(ownMembership.role);
-    const isOwner = activeSpace.owner_id === activeUser.id;
+    const isOwner = space.owner_id === activeUser.id;
     $('#inviteActions').hidden = !canManage;
     $('#memberList').innerHTML = members.length ? members.map((member) => {
       const label = member.member_email || member.user_id;
@@ -1001,8 +1014,9 @@
     if (canManage) {
       const { data: invites, error } = await supabaseClient.from('space_invites')
         .select('id,invited_email,created_at,expires_at,accepted_at,revoked_at')
-        .eq('space_id', activeSpace.id).order('created_at', { ascending: false });
+        .eq('space_id', space.id).order('created_at', { ascending: false });
       if (error) throw error;
+      if (activeSpace?.id !== space.id) return;
       $('#inviteList').innerHTML = invites.length ? invites.map((invite) => {
         const status = invite.accepted_at ? 'Đã tham gia' : invite.revoked_at ? 'Đã thu hồi' : Date.parse(invite.expires_at) <= Date.now() ? 'Đã hết hạn' : 'Đang chờ';
         const revoke = status === 'Đang chờ' ? `<button type="button" data-revoke-invite="${escapeHtml(invite.id)}">Thu hồi</button>` : '';
@@ -1012,30 +1026,60 @@
   }
 
   async function switchSpace(spaceId) {
+    const generation = ++spaceSwitchGeneration;
     const nextSpace = spaces.find((space) => space.id === spaceId);
-    if (!nextSpace || nextSpace.id === activeSpace?.id) return;
-    const generation = ++authGeneration;
+    if (!nextSpace) {
+      if (switchingSpace) {
+        switchingSpace = false;
+        authLoading = false;
+        renderConnection();
+      }
+      $('#activeSpaceSelect').value = activeSpace?.id || '';
+      return;
+    }
+    if (nextSpace.id === activeSpace?.id) {
+      if (switchingSpace) {
+        switchingSpace = false;
+        authLoading = false;
+        setCloudStatus('');
+        renderConnection();
+      }
+      $('#activeSpaceSelect').value = nextSpace.id;
+      return;
+    }
+    switchingSpace = true;
     authLoading = true;
-    activeSpace = nextSpace;
-    data = emptyData();
-    liquidAssetsExpanded = false;
+    setCloudStatus(`Đang tải không gian “${nextSpace.name}”…`);
     renderConnection();
-    renderAll();
     let operation = 'data';
     try {
-      const loadedData = await withStartupTimeout(loadSpaceData(activeSpace.id, filter), operation);
-      if (generation !== authGeneration) return;
+      const loadedData = await withStartupTimeout(loadSpaceData(nextSpace.id, filter), operation);
+      if (generation !== spaceSwitchGeneration) return;
+      activeSpace = nextSpace;
       data = loadedData;
-      sessionStorage.setItem('dong-tien-active-space', activeSpace.id);
+      liquidAssetsExpanded = false;
+      sessionStorage.setItem('dong-tien-active-space', nextSpace.id);
+      $('#activeSpaceSelect').value = nextSpace.id;
+      switchingSpace = false;
       authLoading = false;
       renderConnection();
       renderAll();
-      operation = 'family';
-      await withStartupTimeout(renderFamilyManagement(), operation);
       setCloudStatus('');
+      operation = 'family';
+      try {
+        await withStartupTimeout(renderFamilyManagement(), operation);
+      } catch (error) {
+        if (generation !== spaceSwitchGeneration) return;
+        setCloudStatus(startupErrorMessage(operation, error), true);
+      }
     } catch (error) {
-      if (generation !== authGeneration) return;
-      failAuthStartup(operation, error, generation);
+      if (generation !== spaceSwitchGeneration) return;
+      switchingSpace = false;
+      authLoading = false;
+      $('#activeSpaceSelect').value = activeSpace?.id || '';
+      renderConnection();
+      renderAll();
+      setCloudStatus(startupErrorMessage(operation, error), true);
     }
   }
 

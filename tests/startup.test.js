@@ -149,10 +149,12 @@ function createHarness({
       handler({ preventDefault() {} });
     },
     change(selector, value) {
+      element(selector).value = value;
       const handler = listeners.get(`${selector}:change`);
       assert.ok(handler, `no change handler registered for ${selector}`);
       handler({ target: { value }, preventDefault() {} });
     },
+    storageGet(key) { return sessionValues.get(key) || null; },
     emitAuth(event, session) {
       assert.ok(authListener, 'auth listener was not registered');
       authListener(event, session);
@@ -271,18 +273,12 @@ test('a hung financial data RPC times out and can be retried', async () => {
   );
 });
 
-test('switching spaces cannot leave the auth gate loading forever', async () => {
+test('a timed-out space switch restores the current space and can be retried', async () => {
   const personal = { id: 'space-1', name: 'Cá nhân', kind: 'personal', owner_id: 'user-1' };
-  const family = { id: 'space-2', name: 'Gia đình', kind: 'family', owner_id: 'user-1' };
+  const second = { id: 'space-2', name: 'Không gian 2', kind: 'personal', owner_id: 'user-1' };
   const app = createHarness({
-    sessions: [
-      Promise.resolve({ data: { session: signedInSession }, error: null }),
-      Promise.resolve({ data: { session: signedInSession }, error: null }),
-    ],
-    spaceResults: [
-      { data: [personal, family], error: null },
-      { data: [personal, family], error: null },
-    ],
+    sessions: [Promise.resolve({ data: { session: signedInSession }, error: null })],
+    spaceResults: [{ data: [personal, second], error: null }],
     rpcResults: {
       list_space_transactions: [emptyResult, emptyResult, emptyResult, never(), emptyResult],
     },
@@ -293,10 +289,113 @@ test('switching spaces cannot leave the auth gate loading forever', async () => 
   app.expireTimers();
   await flushPromises();
 
-  assert.equal(app.elements.get('#authGateRetry').hidden, false);
-  app.click('#authGateRetry');
+  assert.equal(app.elements.get('#authGateRetry').hidden, true);
+  assert.equal(app.elements.get('#appContent').hidden, false);
+  assert.equal(app.elements.get('#activeSpaceSelect').value, 'space-1');
+  assert.match(app.elements.get('#cloudStatus').textContent, /phản hồi quá lâu/);
+
+  app.change('#activeSpaceSelect', 'space-2');
   await flushPromises();
   assert.equal(app.elements.get('#appContent').hidden, false);
+  assert.equal(app.elements.get('#activeSpaceSelect').value, 'space-2');
+});
+
+test('sequential space switches load and persist data for each selected space', async () => {
+  const personal = { id: 'space-1', name: 'Cá nhân', kind: 'personal', owner_id: 'user-1' };
+  const second = { id: 'space-2', name: 'Không gian 2', kind: 'personal', owner_id: 'user-1' };
+  const app = createHarness({
+    sessions: [Promise.resolve({ data: { session: signedInSession }, error: null })],
+    spaceResults: [{ data: [personal, second], error: null }],
+  });
+  await flushPromises();
+
+  app.change('#activeSpaceSelect', 'space-2');
+  await flushPromises();
+  assert.equal(app.elements.get('#appContent').hidden, false);
+  assert.equal(app.elements.get('#activeSpaceSelect').value, 'space-2');
+  assert.match(app.elements.get('#connectionSummary').textContent, /Không gian 2/);
+  assert.equal(app.storageGet('dong-tien-active-space'), 'space-2');
+
+  app.change('#activeSpaceSelect', 'space-1');
+  await flushPromises();
+  assert.equal(app.elements.get('#appContent').hidden, false);
+  assert.equal(app.elements.get('#activeSpaceSelect').value, 'space-1');
+  assert.match(app.elements.get('#connectionSummary').textContent, /Cá nhân/);
+  assert.equal(app.storageGet('dong-tien-active-space'), 'space-1');
+  const loadedSpaceIds = app.rpcCalls
+    .filter(({ name }) => name === 'list_space_transactions')
+    .map(({ args }) => args.p_space_id);
+  assert.ok(loadedSpaceIds.includes('space-1'));
+  assert.ok(loadedSpaceIds.includes('space-2'));
+});
+
+test('rapid switches commit only the latest space response', async () => {
+  const personal = { id: 'space-1', name: 'Cá nhân', kind: 'personal', owner_id: 'user-1' };
+  const second = { id: 'space-2', name: 'Không gian 2', kind: 'personal', owner_id: 'user-1' };
+  const third = { id: 'space-3', name: 'Không gian 3', kind: 'personal', owner_id: 'user-1' };
+  let resolveSecondSummary;
+  const secondSummary = new Promise((resolve) => { resolveSecondSummary = resolve; });
+  const app = createHarness({
+    sessions: [Promise.resolve({ data: { session: signedInSession }, error: null })],
+    spaceResults: [{ data: [personal, second, third], error: null }],
+    rpcResults: {
+      get_space_financial_summary_v2: [
+        summaryResult,
+        (args) => args.p_space_id === 'space-2' ? secondSummary : summaryResult,
+      ],
+    },
+  });
+  await flushPromises();
+
+  app.change('#activeSpaceSelect', 'space-2');
+  await flushPromises();
+  assert.equal(app.elements.get('#appContent').hidden, true);
+  assert.equal(app.elements.get('#authGateTitle').textContent, 'Đang chuyển không gian tài chính…');
+  app.change('#activeSpaceSelect', 'space-3');
+  await flushPromises();
+  assert.equal(app.elements.get('#appContent').hidden, false);
+  assert.equal(app.elements.get('#activeSpaceSelect').value, 'space-3');
+  assert.match(app.elements.get('#connectionSummary').textContent, /Không gian 3/);
+
+  resolveSecondSummary({ data: summaryResult.data, error: null });
+  await flushPromises();
+  assert.equal(app.elements.get('#activeSpaceSelect').value, 'space-3');
+  assert.match(app.elements.get('#connectionSummary').textContent, /Không gian 3/);
+  assert.equal(app.storageGet('dong-tien-active-space'), 'space-3');
+});
+
+test('space switch failures keep the current session usable and can be retried', async () => {
+  const personal = { id: 'space-1', name: 'Cá nhân', kind: 'personal', owner_id: 'user-1' };
+  const second = { id: 'space-2', name: 'Không gian 2', kind: 'personal', owner_id: 'user-1' };
+  const app = createHarness({
+    sessions: [Promise.resolve({ data: { session: signedInSession }, error: null })],
+    spaceResults: [{ data: [personal, second], error: null }],
+    rpcResults: {
+      get_space_financial_summary_v2: [
+        summaryResult,
+        { data: null, error: { code: '42501', message: 'private@example.test secret-token' } },
+        summaryResult,
+      ],
+    },
+  });
+  await flushPromises();
+
+  app.change('#activeSpaceSelect', 'space-2');
+  await flushPromises();
+  assert.equal(app.elements.get('#appContent').hidden, false);
+  assert.equal(app.elements.get('#authGateRetry').hidden, true);
+  assert.equal(app.elements.get('#activeSpaceSelect').value, 'space-1');
+  assert.match(app.elements.get('#connectionSummary').textContent, /Cá nhân/);
+  assert.equal(app.storageGet('dong-tien-active-space'), 'space-1');
+  assert.match(app.elements.get('#cloudStatus').textContent, /get_space_financial_summary_v2.*42501/);
+  assert.doesNotMatch(app.elements.get('#cloudStatus').textContent, /private@example\.test|secret-token/);
+
+  app.change('#activeSpaceSelect', 'space-2');
+  await flushPromises();
+  assert.equal(app.elements.get('#appContent').hidden, false);
+  assert.equal(app.elements.get('#activeSpaceSelect').value, 'space-2');
+  assert.match(app.elements.get('#connectionSummary').textContent, /Không gian 2/);
+  assert.equal(app.storageGet('dong-tien-active-space'), 'space-2');
 });
 
 test('a rejected financial RPC does not expose its error text and can be retried', async () => {
