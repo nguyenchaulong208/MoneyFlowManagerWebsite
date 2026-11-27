@@ -164,6 +164,8 @@ stable
 security invoker
 set search_path = ''
 as $$
+declare
+  p_change_pct numeric;
 begin
   if p_previous is null or p_previous = 0 then
     if p_current is null or p_current = 0 then
@@ -174,7 +176,11 @@ begin
   if p_current = p_previous then
     return 'Không thay đổi';
   end if;
-  return format('%s so với tháng trước (%s)', p_current, case p_current > p_previous then '+' else '' end || to_char((p_current - p_previous) / p_previous * 100, 'FM990.0') || '%');
+  p_change_pct := (p_current - p_previous) / p_previous * 100;
+  return format('%s so với tháng trước (%s)',
+    p_current,
+    CASE WHEN p_current > p_previous THEN '+' ELSE '' END || to_char(p_change_pct, 'FM990.0') || '%'
+  );
 end;
 $$;
 
