@@ -96,6 +96,7 @@
             <button class="active" data-filter="all">Tất cả</button><button data-filter="income">Thu nhập</button><button data-filter="expense">Chi tiêu</button>
           </div>
           <div class="transaction-list" id="transactionList"></div>
+          <button class="secondary-button load-more-button" id="loadMoreTransactions" type="button" hidden>Tải thêm giao dịch</button>
           <p class="hint" id="deleteHint" hidden>Chọn giao dịch để xóa.</p>
         </section>
 
@@ -132,7 +133,13 @@
         <div class="handle"></div><div class="sheet-heading"><div><p class="eyebrow">CẬP NHẬT SỔ TÀI CHÍNH</p><h2 id="formTitle">Ghi giao dịch</h2></div><button type="button" data-close-form aria-label="Đóng">×</button></div>
         <div id="transactionTypeGroup" class="segment"><button type="button" class="active" data-type="expense">Chi tiêu</button><button type="button" data-type="income">Thu nhập</button></div>
         <label>SỐ TIỀN<input id="amountInput" name="amount" inputmode="numeric" placeholder="0" required /></label>
-        <div id="transactionFields"><label>DANH MỤC<select id="categoryInput"></select></label><label>GHI CHÚ<input id="noteInput" placeholder="Ví dụ: cà phê sáng" /></label></div>
+        <div id="transactionFields">
+          <label>DANH MỤC<select id="categoryInput"></select></label>
+          <label>GHI CHÚ<input id="noteInput" placeholder="Ví dụ: cà phê sáng" /></label>
+          <label>LIÊN KẾT SỐ DƯ<select id="linkedBalanceInput"><option value="">Không liên kết</option></select></label>
+          <label>ẢNH HƯỞNG SỐ DƯ<select id="balanceEffectInput"><option value="increase">Tăng số dư</option><option value="decrease">Giảm số dư</option></select></label>
+          <small class="form-help">Chỉ khoản mục được liên kết mới thay đổi số dư tài sản hoặc khoản nợ.</small>
+        </div>
         <div id="assetFields" hidden><label>TÊN KHOẢN MỤC<input id="nameInput" placeholder="Ví dụ: Tiết kiệm ngân hàng" /></label><label>LOẠI TÀI SẢN<select id="assetKindInput"><option value="cash">Tiền mặt & tiền gửi</option><option value="investment">Đầu tư</option><option value="property">Bất động sản</option><option value="business">Kinh doanh</option><option value="other">Tài sản khác</option></select></label></div>
         <div id="debtFields" hidden><label>TÊN KHOẢN MỤC<input id="debtNameInput" placeholder="Ví dụ: Thẻ tín dụng" /></label><label>LOẠI KHOẢN PHẢI TRẢ<select id="debtKindInput"><option>Vay</option><option>Thẻ tín dụng</option><option>Trả góp</option><option>Khác</option></select></label><label>NGÀY ĐẾN HẠN (TÙY CHỌN)<input id="dueDateInput" type="date" /></label></div>
         <p class="form-error" id="formError" role="alert" hidden></p>
@@ -185,6 +192,17 @@
           </div>
           <p class="form-error" id="familyError" role="alert" hidden></p>
           <p class="form-error" id="inviteError" role="alert" hidden></p>
+        </section>
+        <section class="category-settings">
+          <h3>DANH MỤC GIAO DỊCH</h3>
+          <form id="categoryForm" class="inline-form">
+            <label>LOẠI<select id="categoryTypeInput"><option value="expense">Chi tiêu</option><option value="income">Thu nhập</option></select></label>
+            <label>TÊN DANH MỤC<input id="categoryNameInput" maxlength="60" required placeholder="Ví dụ: Chăm sóc sức khỏe" /></label>
+            <button class="secondary-button" type="submit">Thêm</button>
+          </form>
+          <p class="form-error" id="categoryError" role="alert" hidden></p>
+          <div id="categoryManager" class="member-list"></div>
+          <p class="hint">Danh mục đã dùng chỉ có thể lưu trữ; nhãn giao dịch cũ được giữ nguyên.</p>
         </section>
         <h3>DỮ LIỆU CỦA BẠN</h3>
         <button class="action-row" id="exportBackup"><span>⇧</span><div><b>Sao lưu ra tệp JSON</b><small>Tạo bản sao lưu dữ liệu hiện tại</small></div><i>›</i></button>

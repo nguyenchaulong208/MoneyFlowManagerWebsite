@@ -16,7 +16,7 @@ Mở `http://localhost:3000`. Cần cấu hình Supabase mới có thể đăng 
 
 ## Tạo Supabase
 
-1. Tạo dự án Supabase và chạy toàn bộ [`supabase/schema.sql`](supabase/schema.sql) trong **SQL Editor**. Schema tạo không gian cá nhân cho tài khoản hiện có và tự động chuyển các giao dịch/tài sản/khoản nợ cũ vào không gian riêng tương ứng. Chạy lại schema an toàn; hãy sao lưu cơ sở dữ liệu trước khi triển khai thay đổi lớn.
+1. Tạo dự án Supabase. Trước khi nâng cấp cơ sở dữ liệu đang dùng, tạo bản sao lưu và kiểm tra số dòng hiện có trong `transactions`, `assets` và `debts`. Chạy toàn bộ [`supabase/schema.sql`](supabase/schema.sql) trong **SQL Editor**, sau đó chạy các tệp trong [`supabase/migrations`](supabase/migrations) theo thứ tự tên. Migration sổ cái chỉ bổ sung cột, chỉ mục, hàm và danh mục mặc định; không xóa hoặc đổi ID/nhãn giao dịch cũ. Sau khi chạy, xác nhận lại số dòng và dữ liệu trong các không gian trước khi đưa phiên bản website mới lên production. Giữ bản sao lưu để có thể khôi phục nếu kiểm tra thất bại.
 2. Trong **Project Settings → API**, dùng Project URL và **anon/public (publishable) key**. Không đưa service-role/secret key vào website, Vercel environment variables hoặc bất kỳ tệp nào được phân phối cho trình duyệt.
 3. Với chạy local, sao chép `supabase-config.example.js` thành `supabase-config.js`, điền URL và public key, sau đó chạy `npm start`. Tệp local này được Git bỏ qua. Tài khoản mới có thể cần xác nhận email theo thiết lập Auth của dự án.
 4. Trong **Authentication → URL Configuration**, đặt **Site URL** là URL production. Thêm chính xác các URL callback được dùng vào **Redirect URLs**, ví dụ `http://localhost:3000/**`, `https://your-domain.example/**` và các domain Preview của Vercel mà bạn cho phép. Không dùng wildcard rộng hơn phạm vi domain của dự án.
@@ -53,3 +53,11 @@ Gửi email thực hiện qua Supabase Edge Function `send-invite` và Resend; k
 4. Triển khai `send-invite` riêng bằng Supabase CLI như phần trên. Sau đó build/redeploy Vercel khi thay đổi biến môi trường hoặc domain.
 
 RLS là ranh giới bảo vệ dữ liệu; không dựa vào bộ lọc UI. Mọi record phải thuộc một `space_id` và chỉ thành viên của đúng space mới đọc/ghi được. Chạy `npm test` để kiểm tra các guard quan trọng ở client/schema/Edge Function; kiểm tra đăng nhập, Google OAuth, RLS và gửi email thật cần project Supabase/Google/Resend đã cấu hình bởi chủ dự án.
+
+## Sổ giao dịch, số dư và báo cáo
+
+Giao dịch được tải theo trang keyset (ngày và ID), giới hạn 50 dòng mỗi lần; nút **Tải thêm giao dịch** lấy trang tiếp theo. Bộ đếm, tổng thu/chi và báo cáo tháng được tính trong PostgreSQL qua RPC có kiểm tra membership và phạm vi `space_id`, không tính từ các trang đang hiển thị. Dữ liệu tài chính vẫn được bảo vệ bởi RLS.
+
+Giao dịch không liên kết không tự làm thay đổi số dư tài sản/khoản nợ. Khi liên kết một giao dịch với tài sản hoặc khoản nợ, chọn rõ tăng hay giảm số dư; thay đổi và xóa giao dịch sẽ đảo/cập nhật đúng phần tác động đó trong cùng giao dịch cơ sở dữ liệu. Xóa tài sản/khoản nợ sẽ bỏ liên kết khỏi giao dịch nhưng giữ nguyên lịch sử giao dịch. Giá trị tài sản là số dư người dùng ghi nhận, không phải định giá thị trường. Giá trị ròng là tổng tài sản trừ nợ; luồng thu/chi được báo cáo riêng để không cộng hai lần khoản đã liên kết.
+
+Danh mục thu nhập/chi tiêu được cấu hình theo không gian. Danh mục đã dùng chỉ được lưu trữ, không xóa cứng; mỗi giao dịch tiếp tục giữ nhãn đã ghi nhận để bảo toàn lịch sử. Migration được lưu theo thứ tự trong `supabase/migrations`; hãy sao lưu và xác nhận dữ liệu trước khi triển khai migration trên cơ sở dữ liệu hiện có. Migration này tương thích ngược ở tầng schema nên có thể khôi phục bản website trước đó mà không gỡ migration. Nếu cần phục hồi cơ sở dữ liệu, dùng bản sao lưu đã kiểm tra; không xóa thủ công các cột/liên kết sau khi đã ghi nhận giao dịch có liên kết vì việc đó sẽ làm mất thông tin sổ cái.
