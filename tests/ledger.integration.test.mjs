@@ -11,6 +11,10 @@ const movementSql = fs.readFileSync(path.join(migrationDir, '20261127010000_acco
 const reportingSql = fs.readFileSync(path.join(migrationDir, '20261127000000_financial_ledger_reporting.sql'), 'utf8');
 const dashboardSql = fs.readFileSync(path.join(migrationDir, '20261127120000_finance_dashboard_and_labels.sql'), 'utf8');
 const movementFixSql = fs.readFileSync(path.join(migrationDir, '20261127130000_account_movement_leg_cast_fix.sql'), 'utf8');
+const rpcDiagnosticsSql = fs.readFileSync(
+  path.join(root, 'supabase', 'verification', 'rpc-diagnostics.sql'),
+  'utf8',
+);
 
 const SPACE_ID = '00000000-0000-4000-8000-000000000001';
 const USER_ID = '00000000-0000-4000-8000-000000000002';
@@ -379,6 +383,31 @@ test('summary handles an empty period and income-only data without client-side h
     assert.equal(Number(summary.month_expense), 0);
     assert.equal(Number(summary.month_net_cash_flow), 250);
     assert.equal(Number(summary.income_expense_ratio), 0);
+  } finally {
+    await db.close();
+  }
+});
+
+test('RPC diagnostic query recognizes an exact installed signature', async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(`
+      create function public.list_space_liquid_assets(uuid, timestamptz, text, integer)
+      returns integer language sql immutable as $$ select 1 $$;
+    `);
+    const { rows } = await db.query(rpcDiagnosticsSql);
+    assert.equal(rows.length, 6);
+    assert.deepEqual(
+      rows.map(({ rpc_name, installed }) => [rpc_name, installed]),
+      [
+        ['list_space_assets', false],
+        ['list_space_balance_movements', false],
+        ['list_space_liabilities', false],
+        ['list_space_transactions', false],
+        ['get_space_financial_summary_v2', false],
+        ['list_space_liquid_assets', true],
+      ],
+    );
   } finally {
     await db.close();
   }

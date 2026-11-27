@@ -355,6 +355,13 @@
       ? error.code : '';
   }
 
+  function rpcWithName(name, args) {
+    return Promise.resolve(supabaseClient.rpc(name, args)).then((result) => ({
+      ...result,
+      error: result.error ? { ...result.error, rpcName: name } : null,
+    }));
+  }
+
   function startupErrorMessage(operation, error) {
     const messages = {
       session: 'Không thể xác nhận phiên đăng nhập.',
@@ -367,6 +374,22 @@
       ? ' Máy chủ phản hồi quá lâu.'
       : ' Kiểm tra kết nối, cấu hình Supabase và các migration.';
     const code = startupErrorCode(error);
+    const rpcName = error?.rpcName;
+    const knownRpc = typeof rpcName === 'string' && /^[a-z][a-z0-9_]{0,62}$/.test(rpcName);
+    if (error?.code === 'PGRST202' && knownRpc) {
+      const requiredMigration = {
+        list_space_transactions: '20261127010000',
+        list_space_assets: '20261127010000',
+        list_space_liabilities: '20261127010000',
+        list_space_balance_movements: '20261127010000',
+        list_space_liquid_assets: '20261127120000',
+        get_space_financial_summary_v2: '20261127120000',
+      }[rpcName];
+      const migrationHint = requiredMigration
+        ? ` Kiểm tra migration ${requiredMigration} (cùng các migration trước đó) đã chạy thành công.`
+        : '';
+      return `${messages[operation] || 'Không thể khởi động ứng dụng.'} Không tìm thấy RPC ${rpcName} trong schema API (PGRST202).${migrationHint} Nếu hàm đã tồn tại trong database, hãy nạp lại schema cache của PostgREST. Hãy thử lại; dữ liệu đã lưu không bị xóa. (mã ${code})`;
+    }
     return `${messages[operation] || 'Không thể khởi động ứng dụng.'}${reason} Hãy thử lại; dữ liệu đã lưu không bị xóa.${code ? ` (mã ${code})` : ''}`;
   }
 
@@ -384,6 +407,7 @@
       operation,
       timedOut: error?.name === 'StartupTimeoutError',
       code: code || undefined,
+      rpcName: typeof error?.rpcName === 'string' ? error.rpcName : undefined,
     });
     renderConnection();
     renderAll();
@@ -520,7 +544,7 @@
   }
 
   async function fetchTransactionPage(spaceId, cursor, transactionTypeFilter, limit = 50) {
-    const { data: result, error } = await supabaseClient.rpc('list_space_transactions', {
+    const { data: result, error } = await rpcWithName('list_space_transactions', {
       p_space_id: spaceId,
       p_before_date: cursor?.date || null,
       p_before_id: cursor?.id || null,
@@ -553,7 +577,7 @@
 
   async function fetchAccountPage(spaceId, kind, cursor, limit = 50, includeArchived = false) {
     const isAsset = kind === 'asset';
-    const { data: result, error } = await supabaseClient.rpc(isAsset ? 'list_space_assets' : 'list_space_liabilities', {
+    const { data: result, error } = await rpcWithName(isAsset ? 'list_space_assets' : 'list_space_liabilities', {
       p_space_id: spaceId,
       p_before_created_at: cursor?.createdAt || null,
       p_before_id: cursor?.id || null,
@@ -570,7 +594,7 @@
   }
 
   async function fetchLiquidAssetPage(spaceId, cursor, limit = 4) {
-    const { data: result, error } = await supabaseClient.rpc('list_space_liquid_assets', {
+    const { data: result, error } = await rpcWithName('list_space_liquid_assets', {
       p_space_id: spaceId,
       p_before_created_at: cursor?.createdAt || null,
       p_before_id: cursor?.id || null,
@@ -610,7 +634,7 @@
   }
 
   async function fetchMovementPage(spaceId, cursor, limit = 50) {
-    const { data: result, error } = await supabaseClient.rpc('list_space_balance_movements', {
+    const { data: result, error } = await rpcWithName('list_space_balance_movements', {
       p_space_id: spaceId,
       p_before_created_at: cursor?.createdAt || null,
       p_before_id: cursor?.id || null,
@@ -642,7 +666,7 @@
       supabaseClient.from('transaction_categories').select('id,type,label,is_archived').eq('space_id', spaceId).order('type').order('label'),
       supabaseClient.from('space_finance_types').select('id,account_kind,code,label,is_liquid,is_archived').eq('space_id', spaceId).order('account_kind').order('label'),
       fetchMovementPage(spaceId, null),
-      supabaseClient.rpc('get_space_financial_summary_v2', {
+      rpcWithName('get_space_financial_summary_v2', {
         p_space_id: spaceId,
         p_month_start: period.start,
         p_month_end: period.end,

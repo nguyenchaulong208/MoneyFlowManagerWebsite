@@ -83,8 +83,8 @@ test('transaction RPC uses a space-scoped composite keyset cursor and server-sid
   assert.match(migration, /create index if not exists transactions_space_type_date_id_idx/i);
   assert.match(migration, /public\.get_space_financial_summary/i);
   assert.match(migration, /month_categories/i);
-  assert.match(app, /rpc\('list_space_transactions'/);
-  assert.match(app, /rpc\('get_space_financial_summary_v2'/);
+  assert.match(app, /rpcWithName\('list_space_transactions'/);
+  assert.match(app, /rpcWithName\('get_space_financial_summary_v2'/);
   assert.match(app, /data\.transactions\.push\(\.\.\.page\.transactions\)/);
   assert.match(html, /id="loadMoreTransactions"/);
 });
@@ -181,7 +181,7 @@ test('overview shows server totals and paginates configurable liquid assets in a
   assert.match(html, /id="overviewAssetTotal"/);
   assert.match(html, /id="overviewLiquidTotal"/);
   assert.match(html, /id="toggleLiquidAssets"/);
-  assert.match(app, /rpc\('list_space_liquid_assets'/);
+  assert.match(app, /rpcWithName\('list_space_liquid_assets'/);
   assert.match(app, /fetchTransactionPage\(spaceId, null, 'all', 4\)/);
   assert.match(app, /data\.summary\.liquid_assets_value/);
   assert.match(completionMigration, /public\.is_space_member\(p_space_id\)/);

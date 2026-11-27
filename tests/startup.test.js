@@ -313,6 +313,41 @@ test('a rejected financial RPC does not expose its error text and can be retried
   );
 });
 
+test('PGRST202 identifies the missing startup RPC and required migration without leaking the server error', async () => {
+  const app = createHarness({
+    sessions: [
+      Promise.resolve({ data: { session: signedInSession }, error: null }),
+      Promise.resolve({ data: { session: signedInSession }, error: null }),
+    ],
+    rpcResults: {
+      get_space_financial_summary_v2: [
+        Promise.resolve({
+          data: null,
+          error: {
+            code: 'PGRST202',
+            message: 'Could not find function with secret private@example.test',
+            details: 'Sensitive server detail',
+          },
+        }),
+        summaryResult,
+      ],
+    },
+  });
+  await flushPromises();
+
+  const message = app.elements.get('#authGateMessage').textContent;
+  assert.match(message, /get_space_financial_summary_v2/);
+  assert.match(message, /20261127120000/);
+  assert.match(message, /schema cache/i);
+  assert.doesNotMatch(message, /private@example\.test|Sensitive server detail|secret/);
+  assert.match(JSON.stringify(app.warnings), /get_space_financial_summary_v2/);
+  assert.doesNotMatch(JSON.stringify(app.warnings), /private@example\.test|Sensitive server detail|secret/);
+
+  app.click('#authGateRetry');
+  await flushPromises();
+  assert.equal(app.elements.get('#appContent').hidden, false);
+});
+
 test('an auth event supersedes a delayed stale getSession result', async () => {
   let resolveSession;
   const delayedSession = new Promise((resolve) => { resolveSession = resolve; });
