@@ -1,6 +1,8 @@
 -- Add account-linked transaction effects, space categories, and server-side reports.
 -- This migration is additive: existing transaction ids and category labels are preserved.
 
+begin;
+
 alter table public.transactions
   add column if not exists linked_asset_id text,
   add column if not exists linked_debt_id text,
@@ -229,7 +231,11 @@ create trigger apply_transaction_balance_effect
 after insert or update or delete on public.transactions
 for each row execute function public.apply_transaction_balance_effect();
 
-create or replace function public.list_space_transactions(
+-- PostgreSQL cannot replace a function when its OUT/RETURNS TABLE row type changes.
+-- No migration function depends on this RPC; clients call it through PostgREST.
+drop function if exists public.list_space_transactions(uuid, timestamptz, text, integer, text);
+
+create function public.list_space_transactions(
   p_space_id uuid,
   p_before_date timestamptz default null,
   p_before_id text default null,
@@ -410,3 +416,5 @@ grant execute on function public.archive_transaction_category(uuid, uuid) to aut
 grant execute on function public.list_space_transactions(uuid, timestamptz, text, integer, text) to authenticated;
 grant execute on function public.get_space_financial_summary(uuid, timestamptz, timestamptz) to authenticated;
 grant execute on function public.replace_financial_data(uuid, jsonb, jsonb, jsonb) to authenticated;
+
+commit;

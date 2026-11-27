@@ -24,7 +24,7 @@ const LOAN_TYPE_ID = '00000000-0000-4000-8000-000000000013';
 
 function extractFunction(source, name) {
   const definition = source.match(new RegExp(
-    `create\\s+or\\s+replace\\s+function\\s+public\\.${name}\\s*\\([\\s\\S]*?\\n\\$\\$;`,
+    `create(?:\\s+or\\s+replace)?\\s+function\\s+public\\.${name}\\s*\\([\\s\\S]*?\\n\\$\\$;`,
     'i',
   ));
   assert.ok(definition, `could not find public.${name} in its migration`);
@@ -408,6 +408,66 @@ test('RPC diagnostic query recognizes an exact installed signature', async () =>
         ['list_space_liquid_assets', true],
       ],
     );
+  } finally {
+    await db.close();
+  }
+});
+
+test('reporting migration replaces an older transaction RPC return type safely', async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(`
+      create role anon;
+      create role authenticated;
+      create schema auth;
+      create function auth.uid() returns uuid language sql stable
+        as $$ select '${USER_ID}'::uuid $$;
+      create function public.is_space_member(p_space_id uuid) returns boolean
+        language sql stable as $$ select p_space_id is not null $$;
+      create table public.transactions (
+        id text, space_id uuid, type text, amount bigint, category text, note text,
+        date timestamptz, linked_asset_id text, linked_debt_id text, balance_effect text
+      );
+      create function public.list_space_transactions(
+        uuid, timestamptz, text, integer, text
+      ) returns table (id text, amount bigint)
+      language sql stable as $$ select null::text, null::bigint where false $$;
+    `);
+
+    const dropStatement = reportingSql.match(
+      /drop\s+function\s+if\s+exists\s+public\.list_space_transactions\s*\(\s*uuid\s*,\s*timestamptz\s*,\s*text\s*,\s*integer\s*,\s*text\s*\)\s*;/i,
+    );
+    assert.ok(dropStatement, 'migration must drop only the exact old RPC identity signature');
+    assert.match(reportingSql, /^-- Add account[\s\S]*?\nbegin;\s/i);
+    const grantStatement = reportingSql.match(
+      /grant\s+execute\s+on\s+function\s+public\.list_space_transactions\s*\(\s*uuid\s*,\s*timestamptz\s*,\s*text\s*,\s*integer\s*,\s*text\s*\)\s+to\s+authenticated\s*;/i,
+    );
+    assert.ok(grantStatement, 'migration must restore authenticated RPC execution');
+    assert.match(reportingSql, /\ncommit;\s*$/i);
+
+    const replacement = `begin;
+      ${dropStatement[0]}
+      ${extractFunction(reportingSql, 'list_space_transactions')}
+      ${grantStatement[0]}
+      commit;`;
+    await db.exec(replacement);
+    await db.exec(replacement);
+
+    const { rows: functionRows } = await db.query(
+      `select pg_get_function_result(
+         'public.list_space_transactions(uuid,timestamptz,text,integer,text)'::regprocedure
+       ) as result`,
+    );
+    assert.match(functionRows[0].result, /linked_asset_id text/);
+    assert.match(functionRows[0].result, /balance_effect text/);
+    const { rows: privilegeRows } = await db.query(
+      `select has_function_privilege(
+         'authenticated',
+         'public.list_space_transactions(uuid,timestamptz,text,integer,text)',
+         'execute'
+       ) as can_execute`,
+    );
+    assert.equal(privilegeRows[0].can_execute, true);
   } finally {
     await db.close();
   }
