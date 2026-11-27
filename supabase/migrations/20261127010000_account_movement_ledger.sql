@@ -224,6 +224,7 @@ select item.space_id, 'asset', item.id,
     from public.transactions as tx
     where tx.space_id = item.space_id and tx.linked_asset_id = item.id
   ), 0),
+  'opening', item.created_at,
   'opening:' || item.space_id || ':asset:' || item.id
 from public.assets as item
 on conflict (idempotency_key) do nothing;
@@ -238,6 +239,7 @@ select item.space_id, 'liability', item.id,
     from public.transactions as tx
     where tx.space_id = item.space_id and tx.linked_debt_id = item.id
   ), 0),
+  'opening', item.created_at,
   'opening:' || item.space_id || ':liability:' || item.id
 from public.debts as item
 on conflict (idempotency_key) do nothing;

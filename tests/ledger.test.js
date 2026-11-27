@@ -11,6 +11,49 @@ const app = read('app.js');
 const html = read('index.html');
 const readme = read('README.md');
 
+function splitTopLevelSqlList(sql) {
+  const parts = [];
+  let depth = 0;
+  let quote = null;
+  let start = 0;
+  for (let index = 0; index < sql.length; index += 1) {
+    const character = sql[index];
+    if (quote) {
+      if (character === quote && sql[index + 1] === quote) index += 1;
+      else if (character === quote) quote = null;
+    } else if (character === "'" || character === '"') {
+      quote = character;
+    } else if (character === '(') {
+      depth += 1;
+    } else if (character === ')') {
+      depth -= 1;
+    } else if (character === ',' && depth === 0) {
+      parts.push(sql.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  parts.push(sql.slice(start).trim());
+  return parts;
+}
+
+function assertOpeningBackfillShape(table, accountKind) {
+  const statement = movementMigration.match(new RegExp(
+    `insert\\s+into\\s+public\\.account_movements\\s*\\(([^)]*)\\)\\s*select\\s+([^;]*?)\\s+from\\s+public\\.${table}\\s+as\\s+item\\s+on\\s+conflict\\s*\\(idempotency_key\\)\\s+do\\s+nothing`,
+    'i'
+  ));
+  assert.ok(statement, `missing ${table} opening movement backfill`);
+  const columns = splitTopLevelSqlList(statement[1]);
+  const expressions = splitTopLevelSqlList(statement[2]);
+  assert.equal(expressions.length, columns.length, `${table} backfill select/target column count`);
+  assert.deepEqual(columns, [
+    'space_id', 'account_kind', 'account_id', 'account_name',
+    'amount', 'movement_type', 'occurred_at', 'idempotency_key'
+  ]);
+  assert.equal(expressions[1], `'${accountKind}'`);
+  assert.equal(expressions[5], "'opening'");
+  assert.equal(expressions[6], 'item.created_at');
+}
+
 test('ledger migration is additive and preserves legacy transaction identity and labels', () => {
   assert.match(migration, /add column if not exists linked_asset_id text/i);
   assert.match(migration, /add column if not exists linked_debt_id text/i);
@@ -69,6 +112,13 @@ test('durable movements are space-scoped, append-only, and reverse transaction e
   assert.match(movementMigration, /transaction_reversal', old\.id, 1/i);
   assert.match(movementMigration, /transaction_reversal', old\.id, 2/i);
   assert.match(movementMigration, /apply_account_movement/i);
+});
+
+test('opening movement backfills provide every target column in order', () => {
+  assertOpeningBackfillShape('assets', 'asset');
+  assertOpeningBackfillShape('debts', 'liability');
+  assert.ok(/^begin;\s*$/im.test(movementMigration));
+  assert.ok(/^commit;\s*$/im.test(movementMigration));
 });
 
 test('two-leg transfers, purchases, repayments, and borrowing preserve balance semantics', () => {
